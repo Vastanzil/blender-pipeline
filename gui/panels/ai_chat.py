@@ -80,7 +80,9 @@ class AIChatPanel(QWidget):
         ai_row = QHBoxLayout()
         ai_row.addWidget(QLabel("AI Backend:"))
         self._backend_combo = QComboBox()
-        self._backend_combo.addItems(["ollama", "openai", "anthropic", "gemini"])
+        # Populated properly by _refresh_backends() once set_orchestrator() is called.
+        # Placeholder list matches the full set so the combo has a valid size.
+        self._backend_combo.addItems(["ollama", "openai", "anthropic", "gemini", "manifest"])
         self._backend_combo.currentIndexChanged.connect(self._switch_backend)
         ai_row.addWidget(self._backend_combo)
         ai_row.addStretch()

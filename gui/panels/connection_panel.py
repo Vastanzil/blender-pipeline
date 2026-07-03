@@ -36,9 +36,10 @@ _MODE_HINTS = {
 
 
 class ConnectionPanel(QDialog):
-    def __init__(self, parent=None, on_connect=None):
+    def __init__(self, parent=None, on_connect=None, on_saved=None):
         super().__init__(parent)
         self.on_connect = on_connect
+        self.on_saved   = on_saved
         self.setWindowTitle("Blender Pipeline Studio — Connection Setup")
         self.setMinimumWidth(540)
         self._build()
@@ -361,6 +362,10 @@ class ConnectionPanel(QDialog):
             if hasattr(page, "_config_key"):
                 reg_set(page._config_key, page._field.text().strip())
 
+        # on_saved: router rebuild + UI refresh (no reconnect needed)
+        if self.on_saved:
+            self.on_saved()
+        # on_connect: full reconnect (called when host/port actually changed)
         if self.on_connect:
             self.on_connect(self.host_input.text().strip(), self.port_input.value())
         self.accept()

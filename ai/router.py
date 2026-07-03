@@ -48,6 +48,18 @@ class AIRouter:
                              f"Choose from {list(self._backends)}")
         self._active = backend
 
+    def rebuild(self):
+        """Re-read config and recreate all backends.
+
+        Call this after the user saves new settings (model selection, API keys,
+        Manifest token, etc.) so changes take effect without needing to reconnect.
+        The active backend name is preserved.
+        """
+        self._build_backends()
+        # Sync active_name in case it was cleared somehow
+        if self._active not in self._backends:
+            self._active = get("ai_backend", "ollama")
+
     def generate_code(self, prompt: str) -> str:
         return self.active.generate_code(prompt)
 

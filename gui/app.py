@@ -159,7 +159,13 @@ class BlenderPipelineStudio(QMainWindow):
             self.setStyleSheet(p.read_text(encoding="utf-8"))
 
     def _show_connection_dialog(self):
-        ConnectionPanel(self, on_connect=self._connect).exec()
+        def _on_saved():
+            # Rebuild AI router so model/backend changes take effect immediately
+            if self.ai:
+                self.ai.rebuild()
+                self.ai_chat.set_orchestrator(self.orchestrator, self.ai)
+                self.status_widget.set_ai(self.ai.active_name)
+        ConnectionPanel(self, on_connect=self._connect, on_saved=_on_saved).exec()
 
     # ------------------------------------------------------------------
     # Connection helpers
