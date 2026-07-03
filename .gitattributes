@@ -1,0 +1,17 @@
+# Normalize line endings
+* text=auto
+
+# Python files — LF
+*.py text eol=lf
+
+# Docs — LF
+*.md text eol=lf
+*.txt text eol=lf
+*.example text eol=lf
+
+# QSS — LF
+*.qss text eol=lf
+
+# Windows batch files — CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf

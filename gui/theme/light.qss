@@ -1,0 +1,40 @@
+/* Blender Pipeline Studio — Light Theme */
+QMainWindow, QWidget {
+    background-color: #f5f5f5;
+    color: #222;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 13px;
+}
+QMenuBar { background-color: #e8e8e8; color: #333; border-bottom: 1px solid #ccc; }
+QMenuBar::item:selected { background-color: #3a7bd5; color: #fff; }
+QMenu { background-color: #fff; color: #333; border: 1px solid #ccc; }
+QMenu::item:selected { background-color: #3a7bd5; color: #fff; }
+QTabBar::tab { background-color: #ddd; color: #555; padding: 7px 16px; }
+QTabBar::tab:selected { background-color: #3a7bd5; color: #fff; font-weight: bold; }
+QTabBar::tab:hover:!selected { background-color: #e8e8e8; }
+QPushButton {
+    background-color: #3a7bd5; color: #fff;
+    border: none; padding: 6px 18px; border-radius: 4px; font-weight: bold;
+}
+QPushButton:hover    { background-color: #2a6bc5; }
+QPushButton:pressed  { background-color: #1a5bb5; }
+QPushButton:disabled { background-color: #bbb; color: #888; }
+QPushButton#danger   { background-color: #c0392b; }
+QPushButton#success  { background-color: #27ae60; }
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+    background-color: #fff; color: #222;
+    border: 1px solid #bbb; border-radius: 3px; padding: 5px;
+}
+QLineEdit:focus { border-color: #3a7bd5; }
+QTextEdit, QPlainTextEdit {
+    background-color: #fff; color: #222;
+    border: 1px solid #bbb; font-family: Consolas, monospace;
+}
+QListWidget { background-color: #fff; color: #333; border: 1px solid #ccc; }
+QListWidget::item:selected { background-color: #3a7bd5; color: #fff; }
+QGroupBox { border: 1px solid #ccc; border-radius: 5px; margin-top: 10px; padding-top: 10px; color: #666; }
+QStatusBar { background-color: #e8e8e8; color: #555; border-top: 1px solid #ccc; }
+QProgressBar { border: 1px solid #ccc; background-color: #eee; text-align: center; }
+QProgressBar::chunk { background-color: #3a7bd5; }
+QTreeWidget { background-color: #fff; color: #333; border: 1px solid #ccc; }
+QHeaderView::section { background-color: #eee; color: #555; border: 1px solid #ccc; padding: 4px; }
