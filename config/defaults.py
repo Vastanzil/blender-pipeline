@@ -6,11 +6,14 @@ DEFAULTS = {
     "connection_mode":   "auto",   # "auto" | "mcpo" | "direct"
     "ai_backend":        "ollama",
     "ollama_host":       "http://localhost:11434",
-    "coder_model":       "qwen2.5-coder:7b",
-    "planner_model":     "qwen3:8b",
+    "coder_model":       "",       # empty = auto-detect from installed Ollama models
+    "planner_model":     "",       # empty = auto-detect from installed Ollama models
     "openai_api_key":    "",
     "anthropic_api_key": "",
     "gemini_api_key":    "",
+    "manifest_host":     "http://localhost:2099",
+    "manifest_token":    "",
+    "manifest_model":    "auto",
     "output_dir":        "",
     "max_retries":       5,
     "poll_interval":     2.0,

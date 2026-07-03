@@ -134,6 +134,10 @@ class OllamaClient:
         )
         return self._generate(prompt, self.model)
 
+    def available_models(self) -> list[str]:
+        """Return list of all installed Ollama model names. Empty if unreachable."""
+        return self._list_models()
+
     def is_available(self) -> bool:
         try:
             r = requests.get(f"{self.host}/api/tags", timeout=5)

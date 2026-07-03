@@ -59,10 +59,11 @@ Blender Pipeline Studio connects to [blender-mcp](https://github.com/ahujasid/bl
 ### AI Backends (runtime-switchable)
 | Backend | What you need |
 |---|---|
-| **Ollama** | Local — free, private, no key required. **Auto-detects installed models.** |
+| **Ollama** | Local — free, private, no key required. Model dropdowns auto-populate from `/api/tags`. |
 | **OpenAI** | `OPENAI_API_KEY` |
 | **Anthropic Claude** | `ANTHROPIC_API_KEY` |
 | **Google Gemini** | `GEMINI_API_KEY` |
+| **Manifest** | Local LLM router ([github.com/mnfst/manifest](https://github.com/mnfst/manifest)). URL `http://localhost:2099`, Bearer token `mnfst_xxx`. `model: "auto"` lets Manifest route to any backend (Ollama, Claude, GPT-4…). |
 
 ### Blender Version Support
 - **Blender 5.x** — `ng.interface.new_socket()`, `BLENDER_EEVEE_NEXT`, new outputs API
@@ -215,8 +216,11 @@ python -c "from config.registry import _config_path; _config_path().unlink(missi
 | `connection_mode` | `auto` | `auto` \| `mcpo` \| `direct` |
 | `ai_backend` | `ollama` | Active AI backend |
 | `ollama_host` | `http://localhost:11434` | Ollama API URL |
-| `coder_model` | *(auto)* | Code model — auto-detected from installed Ollama models |
-| `planner_model` | *(auto)* | Planner model — auto-detected |
+| `coder_model` | *(auto)* | Code model — auto-detected from installed Ollama models. Selectable in UI. |
+| `planner_model` | *(auto)* | Planner model — auto-detected. Selectable in UI. |
+| `manifest_host` | `http://localhost:2099` | Manifest AI router URL |
+| `manifest_token` | *(empty)* | Bearer token (`mnfst_xxx`) — from Manifest dashboard |
+| `manifest_model` | `auto` | Model name to send to Manifest (`auto` = let Manifest decide) |
 | `max_retries` | `5` | Retry attempts on code failure |
 | `poll_interval` | `2.0` | Scene poll interval (seconds) |
 | `theme` | `dark` | UI theme |
@@ -257,6 +261,11 @@ Connect any client to `ws://localhost:8765`:
 ---
 
 ## Changelog
+
+### v1.2 — 2026-07-04
+- **Manifest AI backend** — 5th AI backend routing through [Manifest](https://github.com/mnfst/manifest) local LLM proxy (`http://localhost:2099`). Uses OpenAI-compatible `/v1/chat/completions` with Bearer token. `model: "auto"` lets Manifest choose the best provider (Ollama, Claude, GPT-4, etc.). Configure in Connection Setup → AI Backend → manifest.
+- **Ollama model picker UI** — Connection Setup now shows live coder + planner model dropdowns populated from `/api/tags`. Refresh button re-queries Ollama. Saves as `coder_model` / `planner_model` config keys. Empty = auto-detect as before.
+- **AI backend pages** — stacked widget shows only the relevant config for the active backend (Ollama host + model pickers, API key field, or Manifest URL/token/model).
 
 ### v1.1 — 2026-07-04
 - **mcpo support** — new `MCPOClient` speaks mcpo's OpenAPI REST API (port 8000). `make_client()` auto-detects mcpo vs direct JSON-RPC. Connection panel redesigned with mode selector (mcpo / direct / auto).

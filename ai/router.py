@@ -1,13 +1,14 @@
 """
 ai/router.py
 AIRouter — runtime-switchable AI backend.
-Backends: ollama (default), openai, anthropic, gemini.
+Backends: ollama (default), openai, anthropic, gemini, manifest.
 """
 from config.registry import get
-from .ollama_client   import OllamaClient
-from .openai_client   import OpenAIClient
+from .ollama_client    import OllamaClient
+from .openai_client    import OpenAIClient
 from .anthropic_client import AnthropicClient
-from .gemini_client   import GeminiClient
+from .gemini_client    import GeminiClient
+from .manifest_client  import ManifestClient
 
 
 class AIRouter:
@@ -20,12 +21,17 @@ class AIRouter:
         self._backends = {
             "ollama":    OllamaClient(
                 host          = get("ollama_host", "http://localhost:11434"),
-                model         = get("coder_model",   "qwen2.5-coder:7b"),
-                planner_model = get("planner_model",  "qwen3:8b"),
+                model         = get("coder_model",   ""),
+                planner_model = get("planner_model",  ""),
             ),
             "openai":    OpenAIClient(api_key=get("openai_api_key", "")),
             "anthropic": AnthropicClient(api_key=get("anthropic_api_key", "")),
             "gemini":    GeminiClient(api_key=get("gemini_api_key", "")),
+            "manifest":  ManifestClient(
+                host  = get("manifest_host",  "http://localhost:2099"),
+                token = get("manifest_token", ""),
+                model = get("manifest_model", "auto"),
+            ),
         }
 
     @property
