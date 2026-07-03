@@ -247,11 +247,17 @@ class AIChatPanel(QWidget):
         reason = d.get("reason", "unknown error")
         phase  = d.get("phase", "")
 
-        # Friendly hint for common connection/model errors
+        # Friendly hints for common errors
         hint = ""
         reason_lower = reason.lower()
-        if any(w in reason_lower for w in
-               ("connection", "refused", "model", "404", "not found", "unreachable")):
+        if "11434" in reason or "ollama" in reason_lower:
+            hint = ("\n→ Ollama is not running. Start it, or switch AI Backend "
+                    "to 'manifest' in File › Connect / Setup")
+        elif "invalid leading whitespace" in reason_lower or "reserved character" in reason_lower:
+            hint = ("\n→ Your API token has bad characters. Re-paste it in "
+                    "File › Connect / Setup (avoid trailing spaces/newlines)")
+        elif any(w in reason_lower for w in
+                 ("connection", "refused", "model", "404", "not found", "unreachable")):
             hint = "\n→ Check AI Backend in File › Connect / Setup"
 
         phase_str = f" ({phase})" if phase else ""

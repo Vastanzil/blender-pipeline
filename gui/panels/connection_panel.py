@@ -428,13 +428,19 @@ class ConnectionPanel(QDialog):
 
         elif backend == "manifest":
             reg_set("manifest_host",  self.manifest_host.text().strip())
-            reg_set("manifest_token", self.manifest_token.text().strip())
+            # Aggressively clean the token — copy-paste from dashboards often
+            # brings trailing newlines/spaces that break HTTP Authorization headers
+            token = self.manifest_token.text().strip()
+            token = token.replace("\n", "").replace("\r", "").replace(" ", "")
+            reg_set("manifest_token", token)
             reg_set("manifest_model", self.manifest_model.text().strip() or "auto")
 
         else:
+            # openai / anthropic / gemini — save API key (sanitised)
             page = self._ai_stack.currentWidget()
             if hasattr(page, "_config_key"):
-                reg_set(page._config_key, page._field.text().strip())
+                key = page._field.text().strip().replace("\n", "").replace("\r", "")
+                reg_set(page._config_key, key)
 
         # Pipeline settings
         reg_set("max_retries",   self.retries_spin.value())

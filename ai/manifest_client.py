@@ -32,8 +32,12 @@ class ManifestClient:
                  model: str = "auto",
                  timeout: int = 120):
         self.host    = host.rstrip("/")
-        self.token   = token or os.getenv("MANIFEST_TOKEN", "")
-        self.model   = model   # "auto" = let Manifest decide
+        # Strip whitespace/newlines — config fields can pick up trailing
+        # whitespace from copy-paste, which causes requests to reject the
+        # Authorization header with "Invalid leading whitespace".
+        raw_token    = token or os.getenv("MANIFEST_TOKEN", "")
+        self.token   = raw_token.strip().replace("\n", "").replace("\r", "")
+        self.model   = model.strip() if model else "auto"
         self.timeout = timeout
 
     # ------------------------------------------------------------------
