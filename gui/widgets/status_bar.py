@@ -17,6 +17,10 @@ class StatusBarWidget(QWidget):
             layout.addWidget(lbl)
         layout.addStretch()
 
+    def set_connecting(self, host, port):
+        self._conn.setText(f"⟳ Connecting to {host}:{port}…")
+        self._conn.setStyleSheet("color: #ff9800; font-weight: bold;")
+
     def set_connected(self, host, port):
         self._conn.setText(f"● {host}:{port}")
         self._conn.setStyleSheet("color: #4caf50; font-weight: bold;")

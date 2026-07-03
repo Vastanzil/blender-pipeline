@@ -32,6 +32,7 @@ from gui.panels.log_panel        import LogPanel
 from gui.panels.render_panel     import RenderPanel
 from gui.widgets.status_bar      import StatusBarWidget
 from utils.logger import get_logger
+from utils.async_runner import run_in_thread
 
 log = get_logger("app")
 
@@ -63,7 +64,7 @@ class BlenderPipelineStudio(QMainWindow):
         host = get("mcp_host", "")
         port = int(get("mcp_port", 9876))
         if host and get("auto_connect", True):
-            QTimer.singleShot(400, lambda: self._connect(host, port))
+            QTimer.singleShot(400, lambda: self._connect_async(host, port))
         else:
             QTimer.singleShot(400, self._show_connection_dialog)
 
@@ -151,14 +152,77 @@ class BlenderPipelineStudio(QMainWindow):
     def _show_connection_dialog(self):
         ConnectionPanel(self, on_connect=self._connect).exec()
 
-    def _connect(self, host: str, port: int):
-        log.info(f"Connecting to {host}:{port}")
-        try:
-            client = BlenderMCPClient(host, port, timeout=10.0)
-            if not client.ping():
-                self.bus.emit("connection.fail", {"host": host, "port": port})
-                return
+    # ------------------------------------------------------------------
+    # Connection helpers
+    # ------------------------------------------------------------------
 
+    def _connect_async(self, host: str, port: int):
+        """Start connection in a background thread so the GUI stays responsive."""
+        self.status_widget.set_connecting(host, port)
+        log.info(f"Connecting to {host}:{port} …")
+
+        def _do():
+            client = BlenderMCPClient(host, port, timeout=10.0)
+            ok = client.ping()
+            return client, ok
+
+        run_in_thread(
+            _do,
+            on_result=lambda r: self._on_connect_result(r[0], r[1], host, port),
+            on_error=lambda e: self._on_connect_error(e, host, port),
+        )
+
+    def _on_connect_result(self, client, ok: bool, host: str, port: int):
+        """Called on the GUI thread after the background ping returns."""
+        if not ok:
+            self.bus.emit("connection.fail", {"host": host, "port": port})
+            log.warning(f"blender-mcp not reachable at {host}:{port}")
+            self._show_connect_fail_dialog(host, port)
+            return
+        self._finish_connect(client, host, port)
+
+    def _on_connect_error(self, err: str, host: str, port: int):
+        """Called on the GUI thread when the background thread raised an exception."""
+        self.bus.emit("connection.error", {"error": err})
+        log.error(f"Connection error: {err}")
+        self._show_connect_fail_dialog(host, port, detail=err)
+
+    def _show_connect_fail_dialog(self, host: str, port: int, detail: str = ""):
+        """Show a friendly error dialog and offer to open the setup dialog."""
+        msg = (
+            f"<b>Cannot connect to blender-mcp</b><br><br>"
+            f"Address: <code>{host}:{port}</code><br><br>"
+            f"<b>To fix:</b><ol>"
+            f"<li>Open <b>Blender</b></li>"
+            f"<li>Press <b>N</b> to open the side panel</li>"
+            f"<li>Click the <b>MCP</b> tab</li>"
+            f"<li>Click <b>Start MCP Server</b></li>"
+            f"</ol>"
+        )
+        if detail:
+            msg += f"<br><small>Error: {detail}</small>"
+
+        dlg = QMessageBox(self)
+        dlg.setWindowTitle("Blender MCP — Connection Failed")
+        dlg.setIcon(QMessageBox.Icon.Warning)
+        dlg.setText(msg)
+        dlg.setStandardButtons(
+            QMessageBox.StandardButton.Retry |
+            QMessageBox.StandardButton.Open  |
+            QMessageBox.StandardButton.Cancel
+        )
+        dlg.button(QMessageBox.StandardButton.Open).setText("Connection Setup…")
+        dlg.button(QMessageBox.StandardButton.Retry).setText("Retry")
+        choice = dlg.exec()
+
+        if choice == QMessageBox.StandardButton.Retry:
+            self._connect_async(host, port)
+        elif choice == QMessageBox.StandardButton.Open:
+            self._show_connection_dialog()
+
+    def _finish_connect(self, client, host: str, port: int):
+        """Complete a successful connection — runs on the GUI thread."""
+        try:
             self.client   = client
             self.registry = ToolRegistry(client).refresh()
             self.executor = ToolExecutor(client)
@@ -187,7 +251,12 @@ class BlenderPipelineStudio(QMainWindow):
 
         except Exception as e:
             self.bus.emit("connection.error", {"error": str(e)})
-            log.error(f"Connection error: {e}")
+            log.error(f"Post-connect setup error: {e}")
+            self._show_connect_fail_dialog(host, port, detail=str(e))
+
+    def _connect(self, host: str, port: int):
+        """Public entry point — used by ConnectionPanel callback and menu."""
+        self._connect_async(host, port)
 
     def _on_tool_selected(self, tool):
         self.tool_runner.load_tool(tool)
