@@ -2,7 +2,8 @@
 
 DEFAULTS = {
     "mcp_host":          "localhost",
-    "mcp_port":          9876,
+    "mcp_port":          8000,
+    "connection_mode":   "auto",   # "auto" | "mcpo" | "direct"
     "ai_backend":        "ollama",
     "ollama_host":       "http://localhost:11434",
     "coder_model":       "qwen2.5-coder:7b",

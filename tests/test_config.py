@@ -29,7 +29,7 @@ def test_load_config_returns_defaults_when_no_file(monkeypatch, tmp_path):
     from config.registry import load_config
     cfg = load_config()
     assert cfg["mcp_host"] == "localhost"
-    assert cfg["mcp_port"] == 9876
+    assert cfg["mcp_port"] == 8000   # default is now 8000 (mcpo)
 
 
 def test_save_and_load_roundtrip(monkeypatch, tmp_path):

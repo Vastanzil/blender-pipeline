@@ -13,7 +13,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction
 
 from config.registry import get, set as reg_set
-from mcp.client import BlenderMCPClient
+from mcp.factory import make_client
 from mcp.tool_registry import ToolRegistry
 from mcp.tool_executor import ToolExecutor
 from ai.router import AIRouter
@@ -162,7 +162,7 @@ class BlenderPipelineStudio(QMainWindow):
         log.info(f"Connecting to {host}:{port} …")
 
         def _do():
-            client = BlenderMCPClient(host, port, timeout=10.0)
+            client = make_client(host, port, timeout=10.0)
             ok = client.ping()
             return client, ok
 

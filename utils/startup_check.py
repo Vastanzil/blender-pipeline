@@ -175,14 +175,16 @@ def check_output_dir() -> CheckResult:
 
 def check_blender_connection(host: str, port: int) -> CheckResult:
     def _():
-        from mcp.client import BlenderMCPClient
-        c = BlenderMCPClient(host, port, timeout=5.0)
-        if not c.ping():
+        from mcp.factory import make_client, detect_mode
+        found = detect_mode(host, port, timeout=5.0)
+        if found == "none":
             return False, f"No response from blender-mcp at {host}:{port}"
-        ver = c.get_blender_version()
+        c     = make_client(host, port, timeout=5.0)
+        ver   = c.get_blender_version()
         tools = c.list_tools()
-        v = ".".join(str(x) for x in ver)
-        return True, f"Blender {v} connected — {len(tools)} tools ✓"
+        v     = ".".join(str(x) for x in ver)
+        mode_label = "mcpo" if found == "mcpo" else "direct"
+        return True, f"Blender {v} — {len(tools)} tools  [{mode_label}] ✓"
     return _check(f"Blender MCP ({host}:{port})", _)
 
 
