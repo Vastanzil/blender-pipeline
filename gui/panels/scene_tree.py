@@ -2,15 +2,19 @@
 import json
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                               QPushButton, QTreeWidget, QTreeWidgetItem)
+from realtime.qt_bridge import QtBridge
 
 
 class SceneTreePanel(QWidget):
     def __init__(self, bus=None, parent=None):
         super().__init__(parent)
-        self._client = None
+        self._client  = None
+        self._relays  = []   # keep refs so relays aren't GC'd
         self._build()
         if bus:
-            bus.subscribe("scene.updated", lambda d: self._update(d.get("scene")))
+            self._relays.append(
+                QtBridge.subscribe(bus, "scene.updated",
+                                   lambda d: self._update(d.get("scene"))))
 
     def set_client(self, client):
         self._client = client

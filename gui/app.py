@@ -33,6 +33,7 @@ from gui.panels.render_panel     import RenderPanel
 from gui.widgets.status_bar      import StatusBarWidget
 from utils.logger import get_logger
 from utils.async_runner import run_in_thread
+from realtime.qt_bridge import QtBridge
 
 log = get_logger("app")
 
@@ -57,9 +58,16 @@ class BlenderPipelineStudio(QMainWindow):
         self._build_menu()
         self._apply_theme()
 
-        self.bus.subscribe("connection.ok",    lambda d: self.status_widget.set_connected(d["host"], d["port"]))
-        self.bus.subscribe("connection.fail",  lambda _: self.status_widget.set_disconnected())
-        self.bus.subscribe("connection.error", lambda _: self.status_widget.set_disconnected())
+        # All bus→widget bindings go through QtBridge so background-thread
+        # emits are marshalled to the GUI thread via Qt's queued connection.
+        self._bus_relays = [
+            QtBridge.subscribe(self.bus, "connection.ok",
+                               lambda d: self.status_widget.set_connected(d["host"], d["port"])),
+            QtBridge.subscribe(self.bus, "connection.fail",
+                               lambda _: self.status_widget.set_disconnected()),
+            QtBridge.subscribe(self.bus, "connection.error",
+                               lambda _: self.status_widget.set_disconnected()),
+        ]
 
         host = get("mcp_host", "")
         port = int(get("mcp_port", 9876))

@@ -3,6 +3,7 @@ import time
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                               QTextEdit, QPushButton, QLabel)
 from PyQt6.QtGui import QTextCursor
+from realtime.qt_bridge import QtBridge
 
 
 class LogPanel(QWidget):
@@ -10,25 +11,39 @@ class LogPanel(QWidget):
 
     def __init__(self, bus=None, parent=None):
         super().__init__(parent)
-        self._lines = 0
+        self._lines  = 0
+        self._relays = []   # keep refs so relays aren't GC'd
         self._build()
         if bus:
-            bus.subscribe("pipeline.start",      lambda d: self.info(f"Pipeline: {d.get('prompt','')[:70]}"))
-            bus.subscribe("pipeline.plan",        lambda d: self.info(f"Plan ready — {d.get('total',0)} steps"))
-            bus.subscribe("pipeline.step.start",  lambda d: self.info(
-                f"  [{d.get('index',0)+1}/{d.get('total',1)}] {d.get('description','')[:60]}"))
-            bus.subscribe("pipeline.step.done",   self._on_step_done)
-            bus.subscribe("pipeline.done",        lambda d: self.success(
-                f"Pipeline complete — {d.get('total_steps',0)} steps in {d.get('elapsed_s',0):.1f}s"))
-            bus.subscribe("pipeline.aborted",     lambda d: self.warning("Pipeline aborted"))
-            bus.subscribe("mcp.error",            lambda d: self.error(f"MCP: {d.get('error','')[:100]}"))
-            bus.subscribe("scene.updated",        lambda _: self.debug("Scene updated"))
-            bus.subscribe("connection.ok",        lambda d: self.success(
-                f"Connected: {d.get('host')}:{d.get('port')}"))
-            bus.subscribe("connection.fail",      lambda d: self.error(
-                f"Connection failed: {d.get('host')}:{d.get('port')}"))
-            bus.subscribe("connection.error",     lambda d: self.error(
-                f"Connection error: {d.get('error','')}"))
+            def _sub(event, fn):
+                self._relays.append(QtBridge.subscribe(bus, event, fn))
+
+            _sub("pipeline.start",
+                 lambda d: self.info(f"Pipeline: {d.get('prompt','')[:70]}"))
+            _sub("pipeline.plan",
+                 lambda d: self.info(f"Plan ready — {d.get('total',0)} steps"))
+            _sub("pipeline.step.start",
+                 lambda d: self.info(
+                     f"  [{d.get('index',0)+1}/{d.get('total',1)}] "
+                     f"{d.get('description','')[:60]}"))
+            _sub("pipeline.step.done",  self._on_step_done)
+            _sub("pipeline.done",
+                 lambda d: self.success(
+                     f"Pipeline complete — {d.get('total_steps',0)} steps "
+                     f"in {d.get('elapsed_s',0):.1f}s"))
+            _sub("pipeline.aborted",    lambda d: self.warning("Pipeline aborted"))
+            _sub("mcp.error",
+                 lambda d: self.error(f"MCP: {d.get('error','')[:100]}"))
+            _sub("scene.updated",       lambda _: self.debug("Scene updated"))
+            _sub("connection.ok",
+                 lambda d: self.success(
+                     f"Connected: {d.get('host')}:{d.get('port')}"))
+            _sub("connection.fail",
+                 lambda d: self.error(
+                     f"Connection failed: {d.get('host')}:{d.get('port')}"))
+            _sub("connection.error",
+                 lambda d: self.error(
+                     f"Connection error: {d.get('error','')}"))
 
     def _build(self):
         layout = QVBoxLayout(self)

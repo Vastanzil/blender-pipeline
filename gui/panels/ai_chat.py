@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
 from PyQt6.QtCore import Qt
 from utils.async_runner import AsyncWorker
 from config.registry import get, set as reg_set
+from realtime.qt_bridge import QtBridge
 
 
 class AIChatPanel(QWidget):
@@ -16,12 +17,16 @@ class AIChatPanel(QWidget):
         self._orchestrator = None
         self._ai     = None
         self._worker = None
+        self._relays = []   # keep refs so relays aren't GC'd
         self._build()
         if bus:
-            bus.subscribe("pipeline.step.start", self._on_step_start)
-            bus.subscribe("pipeline.step.done",  self._on_step_done)
-            bus.subscribe("pipeline.done",        self._on_pipeline_done)
-            bus.subscribe("pipeline.aborted",     lambda _: self._reset_buttons())
+            def _sub(event, fn):
+                self._relays.append(QtBridge.subscribe(bus, event, fn))
+
+            _sub("pipeline.step.start", self._on_step_start)
+            _sub("pipeline.step.done",  self._on_step_done)
+            _sub("pipeline.done",       self._on_pipeline_done)
+            _sub("pipeline.aborted",    lambda _: self._reset_buttons())
 
     def set_orchestrator(self, orchestrator, ai_router):
         self._orchestrator = orchestrator
