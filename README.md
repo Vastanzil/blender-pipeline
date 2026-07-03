@@ -1,5 +1,9 @@
 # Blender Pipeline Studio
 
+### 🎉 v2.0 — First Fully Working Prototype
+
+> **AI-powered 3D generation is live.** Type a natural-language prompt, hit Run Pipeline, and watch Blender build your scene step-by-step — planning, code generation, execution, and self-correcting retries, all fully automated. Five AI backends supported. Zero manual coding required.
+
 > **Full-authority Blender control from a desktop GUI — powered by AI.**
 
 Blender Pipeline Studio connects to [blender-mcp](https://github.com/ahujasid/blender-mcp) (via **mcpo** or direct) running inside Blender and gives you a complete intelligent interface: natural-language AI pipeline, dynamic tool runner, live bpy code editor, real-time scene viewer, and multi-backend LLM integration — all in one dark-themed PyQt6 desktop app.
@@ -140,7 +144,8 @@ BLENDER PIPELINE/
 │   ├── ollama_client.py          # Ollama — auto-detects installed models ← UPDATED
 │   ├── openai_client.py          # OpenAI chat completions
 │   ├── anthropic_client.py       # Anthropic messages API
-│   └── gemini_client.py          # Google Gemini generateContent
+│   ├── gemini_client.py          # Google Gemini generateContent
+│   └── manifest_client.py        # Manifest AI router (localhost:2099) ← NEW
 │
 ├── blender/                      # bpy code string builders
 │   ├── geometry_nodes.py
@@ -184,6 +189,7 @@ BLENDER PIPELINE/
 │   ├── logger.py
 │   ├── code_validator.py
 │   ├── async_runner.py           # AsyncWorker QThread — self-managing lifetime ← UPDATED
+│   ├── log_writer.py            # Disk log persistence ← NEW
 │   └── startup_check.py         # 13 self-test checks + Blender ping
 │
 └── tests/                        # 94 unit tests — all pass
@@ -261,6 +267,21 @@ Connect any client to `ws://localhost:8765`:
 ---
 
 ## Changelog
+
+### v2.0 — 2026-07-04 🎉 First Fully Working Prototype
+- **Milestone: fully working AI-powered 3D generation** — end-to-end pipeline proven: natural language → AI plan → bpy code generation → Blender execution → self-correcting retries. Successfully generating complex 3D scenes from text prompts.
+- **5 AI backends all operational** — Ollama, OpenAI, Anthropic, Gemini, and Manifest AI router. Runtime-switchable from the AI Pipeline tab or Connection Setup.
+- **Connection crash fix** — `self.status` created at top of `_build()` before any background thread starts; model refresh deferred via `QTimer.singleShot(0)`. No more `AttributeError` on File → Connect/Setup.
+- **Pipeline abort display** — abort reason shown in red with context-specific hints (Ollama not running, bad token, connection refused). Previously aborts were silent.
+- **Token sanitization** — Manifest tokens and API keys stripped of whitespace/newlines on save and on client init. Fixes `Invalid leading whitespace` header errors from corrupted copy-paste.
+- **AI health monitoring** — 30-second background health poll updates status bar with green/red dot. Shows `backend / model-name` (e.g. `manifest / auto`).
+- **Step detail view** — click any completed pipeline step to see generated bpy code, error output, and retry count in a monospace detail pane.
+- **Config in-memory cache** — `registry.py` reads config JSON once; subsequent `get()` calls hit memory. `set()` writes through to disk.
+- **Log persistence** — all log lines written to `~/blender_pipeline_output/logs/<timestamp>.log`. 📂 button opens log folder.
+- **Pipeline settings UI** — max retries, poll interval, AI timeout, and output directory configurable in Connection Setup.
+- **Tool browser filter** — live search with `N of M tools` count.
+- **Schema updated** — all `manifest_*`, `connection_mode`, `ai_timeout`, `stream_ai`, `log_level` fields added to `AppConfig`. `ai_backend` validator accepts all 5 backends.
+- **94 tests passing** — all unit tests green.
 
 ### v1.2 — 2026-07-04
 - **Manifest AI backend** — 5th AI backend routing through [Manifest](https://github.com/mnfst/manifest) local LLM proxy (`http://localhost:2099`). Uses OpenAI-compatible `/v1/chat/completions` with Bearer token. `model: "auto"` lets Manifest choose the best provider (Ollama, Claude, GPT-4, etc.). Configure in Connection Setup → AI Backend → manifest.
