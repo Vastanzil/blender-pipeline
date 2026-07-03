@@ -53,6 +53,7 @@ class BlenderPipelineStudio(QMainWindow):
         self.bridge       = None
         self.ws_server    = None
         self.bus          = EventBus()
+        self._workers     = []   # legacy — async_runner._live now handles lifetime
 
         self._build_ui()
         self._build_menu()
@@ -174,11 +175,13 @@ class BlenderPipelineStudio(QMainWindow):
             ok = client.ping()
             return client, ok
 
-        run_in_thread(
+        w = run_in_thread(
             _do,
             on_result=lambda r: self._on_connect_result(r[0], r[1], host, port),
             on_error=lambda e: self._on_connect_error(e, host, port),
         )
+        self._workers.append(w)
+        w.finished.connect(lambda: self._workers.remove(w) if w in self._workers else None)
 
     def _on_connect_result(self, client, ok: bool, host: str, port: int):
         """Called on the GUI thread after the background ping returns."""
@@ -273,9 +276,12 @@ class BlenderPipelineStudio(QMainWindow):
     def _refresh_tools(self):
         if not self.client or not self.registry:
             return
-        from utils.async_runner import run_in_thread
-        run_in_thread(self.registry.refresh,
-                      on_result=lambda _: self.tool_browser.load_tools(self.registry.all()))
+        w = run_in_thread(
+            self.registry.refresh,
+            on_result=lambda _: self.tool_browser.load_tools(self.registry.all()),
+        )
+        self._workers.append(w)
+        w.finished.connect(lambda: self._workers.remove(w) if w in self._workers else None)
 
     def _start_ws(self):
         if self.ws_server:

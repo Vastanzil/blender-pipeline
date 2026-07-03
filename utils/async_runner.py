@@ -1,9 +1,14 @@
 """
 utils/async_runner.py
 AsyncWorker: QThread subclass that runs any callable off the GUI thread.
-run_in_thread(): convenience wrapper.
+run_in_thread(): convenience wrapper — keeps the worker alive until it
+finishes so the QThread is never GC'd while still running.
 """
 from PyQt6.QtCore import QThread, pyqtSignal
+
+# Module-level set that keeps every in-flight worker alive.
+# Workers remove themselves via their finished signal.
+_live: set = set()
 
 
 class AsyncWorker(QThread):
@@ -33,5 +38,10 @@ def run_in_thread(fn, on_result=None, on_error=None, on_progress=None):
         worker.error_raised.connect(on_error)
     if on_progress:
         worker.progress.connect(on_progress)
+
+    # Keep the worker alive until Qt signals 'finished', then release it.
+    _live.add(worker)
+    worker.finished.connect(lambda: _live.discard(worker))
+
     worker.start()
     return worker
