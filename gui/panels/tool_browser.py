@@ -60,8 +60,12 @@ class ToolBrowserPanel(QWidget):
             self._render(self._tools)
             return
         q = text.lower()
-        self._render([t for t in self._tools
-                      if q in t.name.lower() or q in t.description.lower()])
+        matched = [t for t in self._tools
+                   if q in t.name.lower() or q in (t.description or "").lower()]
+        self._render(matched)
+        total = len(self._tools)
+        n = len(matched)
+        self._count.setText(f"{n} of {total} tool{'s' if total != 1 else ''}")
 
     def _on_click(self, item):
         tool = item.data(Qt.ItemDataRole.UserRole)

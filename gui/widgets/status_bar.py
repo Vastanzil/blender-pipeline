@@ -33,6 +33,18 @@ class StatusBarWidget(QWidget):
         self._ver.setText(f"Blender {'.'.join(str(v) for v in ver)}")
         self._ver.setStyleSheet("color: #aaa;")
 
-    def set_ai(self, name):
-        self._ai.setText(f"AI: {name}")
-        self._ai.setStyleSheet("color: #aaa;")
+    def set_ai(self, name: str, ok: bool | None = None):
+        """Update the AI backend label.
+
+        Args:
+            name: display name, e.g. "ollama / qwen2.5-coder:7b"
+            ok:   True = green dot, False = red dot, None = grey dot
+        """
+        if ok is True:
+            dot, colour = "●", "#4caf50"
+        elif ok is False:
+            dot, colour = "●", "#f44336"
+        else:
+            dot, colour = "●", "#888"
+        self._ai.setText(f"{dot} AI: {name}")
+        self._ai.setStyleSheet(f"color: {colour};")

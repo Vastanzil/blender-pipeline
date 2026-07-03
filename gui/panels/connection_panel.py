@@ -17,11 +17,11 @@ AI backends (5):
 """
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout,
-    QLineEdit, QSpinBox, QPushButton, QLabel,
+    QLineEdit, QSpinBox, QDoubleSpinBox, QPushButton, QLabel,
     QGroupBox, QComboBox, QRadioButton, QButtonGroup,
-    QFrame, QStackedWidget, QWidget,
+    QFrame, QStackedWidget, QWidget, QFileDialog,
 )
-from PyQt6.QtCore import Qt  # noqa: F401
+from PyQt6.QtCore import Qt, QTimer
 from config.registry import get, set as reg_set
 
 _MODE_PORTS = {"mcpo": 8000, "direct": 9876, "auto": 8000}
@@ -41,7 +41,7 @@ class ConnectionPanel(QDialog):
         self.on_connect = on_connect
         self.on_saved   = on_saved
         self.setWindowTitle("Blender Pipeline Studio — Connection Setup")
-        self.setMinimumWidth(540)
+        self.setMinimumWidth(560)
         self._build()
 
     # ------------------------------------------------------------------
@@ -50,7 +50,17 @@ class ConnectionPanel(QDialog):
 
     def _build(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
+
+        # ── Status label MUST be created FIRST ───────────────────────
+        # _on_models_loaded and _on_manifest_test are async callbacks that
+        # reference self.status. They can fire before _build() finishes if
+        # Ollama or Manifest replies quickly, so self.status must exist
+        # before any background thread is started.
+        self.status = QLabel("")
+        self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status.setWordWrap(True)
+        self.status.setMinimumHeight(32)
 
         # Header
         title = QLabel("Blender Pipeline Studio — Setup")
@@ -104,35 +114,58 @@ class ConnectionPanel(QDialog):
         ai_top.addRow("Backend:", self.backend_combo)
         ai_outer.addLayout(ai_top)
 
-        # Stacked pages — one per backend that needs config
         self._ai_stack = QStackedWidget()
-
-        # Page 0 — ollama
-        self._ai_stack.addWidget(self._build_ollama_page())
-        # Page 1 — openai
-        self._ai_stack.addWidget(self._build_key_page("openai_api_key", "OpenAI API Key:"))
-        # Page 2 — anthropic
-        self._ai_stack.addWidget(self._build_key_page("anthropic_api_key", "Anthropic API Key:"))
-        # Page 3 — gemini
-        self._ai_stack.addWidget(self._build_key_page("gemini_api_key", "Gemini API Key:"))
-        # Page 4 — manifest
-        self._ai_stack.addWidget(self._build_manifest_page())
-
+        self._ai_stack.addWidget(self._build_ollama_page())                              # 0
+        self._ai_stack.addWidget(self._build_key_page("openai_api_key",    "OpenAI API Key:"))   # 1
+        self._ai_stack.addWidget(self._build_key_page("anthropic_api_key", "Anthropic API Key:"))# 2
+        self._ai_stack.addWidget(self._build_key_page("gemini_api_key",    "Gemini API Key:"))   # 3
+        self._ai_stack.addWidget(self._build_manifest_page())                            # 4
         ai_outer.addWidget(self._ai_stack)
         layout.addWidget(ai_group)
 
         self.backend_combo.currentTextChanged.connect(self._on_backend_change)
-        self._on_backend_change(self.backend_combo.currentText())  # set initial page
+        self._on_backend_change(self.backend_combo.currentText())
 
-        # ── Status ───────────────────────────────────────────────────
-        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        # ── Pipeline settings ─────────────────────────────────────────
+        ps_group = QGroupBox("Pipeline Settings")
+        ps_form  = QFormLayout(ps_group)
+
+        self.retries_spin = QSpinBox()
+        self.retries_spin.setRange(1, 20)
+        self.retries_spin.setValue(int(get("max_retries", 5)))
+        ps_form.addRow("Max retries:", self.retries_spin)
+
+        self.poll_spin = QDoubleSpinBox()
+        self.poll_spin.setRange(0.5, 30.0)
+        self.poll_spin.setSingleStep(0.5)
+        self.poll_spin.setDecimals(1)
+        self.poll_spin.setSuffix(" s")
+        self.poll_spin.setValue(float(get("poll_interval", 2.0)))
+        ps_form.addRow("Scene poll:", self.poll_spin)
+
+        self.timeout_spin = QSpinBox()
+        self.timeout_spin.setRange(10, 300)
+        self.timeout_spin.setSuffix(" s")
+        self.timeout_spin.setValue(int(get("ai_timeout", 120)))
+        ps_form.addRow("AI timeout:", self.timeout_spin)
+
+        out_row = QHBoxLayout()
+        self.outdir_input = QLineEdit(get("output_dir", ""))
+        self.outdir_input.setPlaceholderText("(default: ~/blender_pipeline_output)")
+        browse_btn = QPushButton("Browse…")
+        browse_btn.setFixedWidth(70)
+        browse_btn.clicked.connect(self._browse_output_dir)
+        out_row.addWidget(self.outdir_input)
+        out_row.addWidget(browse_btn)
+        ps_form.addRow("Output dir:", out_row)
+
+        layout.addWidget(ps_group)
+
+        # ── Status ────────────────────────────────────────────────────
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
         layout.addWidget(sep)
-
-        self.status = QLabel("")
-        self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status.setWordWrap(True)
-        self.status.setMinimumHeight(32)
-        layout.addWidget(self.status)
+        layout.addWidget(self.status)   # created at top of _build()
 
         # ── Buttons ──────────────────────────────────────────────────
         btn_row = QHBoxLayout()
@@ -156,7 +189,6 @@ class ConnectionPanel(QDialog):
         self.ollama_host = QLineEdit(get("ollama_host", "http://localhost:11434"))
         form.addRow("Ollama Host:", self.ollama_host)
 
-        # Coder model row with Refresh button
         coder_row = QHBoxLayout()
         self.coder_combo = QComboBox()
         self.coder_combo.setEditable(True)
@@ -174,8 +206,11 @@ class ConnectionPanel(QDialog):
         self.planner_combo.setMinimumWidth(200)
         form.addRow("Planner model:", self.planner_combo)
 
-        # Populate models immediately (non-blocking best-effort)
-        self._refresh_ollama_models()
+        # Defer model fetch until after _build() returns so self.status exists
+        # when the callback fires.  QTimer.singleShot(0) posts to the event
+        # queue — it runs on the very next event-loop iteration, after _build()
+        # has fully completed and self.status is guaranteed to exist.
+        QTimer.singleShot(0, self._refresh_ollama_models)
         return w
 
     def _build_key_page(self, config_key: str, label: str) -> QWidget:
@@ -186,7 +221,6 @@ class ConnectionPanel(QDialog):
         field.setEchoMode(QLineEdit.EchoMode.Password)
         field.setPlaceholderText("sk-..." if "openai" in config_key else "")
         form.addRow(label, field)
-        # Store ref on widget so _save() can find it
         w._config_key = config_key
         w._field      = field
         return w
@@ -214,6 +248,10 @@ class ConnectionPanel(QDialog):
         hint.setStyleSheet("color:#777; font-size:10px;")
         hint.setWordWrap(True)
         form.addRow("", hint)
+
+        self._manifest_test_btn = QPushButton("Test Manifest Connection")
+        self._manifest_test_btn.clicked.connect(self._test_manifest)
+        form.addRow("", self._manifest_test_btn)
         return w
 
     # ------------------------------------------------------------------
@@ -250,7 +288,6 @@ class ConnectionPanel(QDialog):
             combo.addItem("(auto-detect)")
             for m in models:
                 combo.addItem(m)
-            # Select saved value if present
             idx = combo.findText(saved)
             combo.setCurrentIndex(idx if idx >= 0 else 0)
 
@@ -262,8 +299,49 @@ class ConnectionPanel(QDialog):
             self.status.setStyleSheet("color:#4caf50;")
 
     # ------------------------------------------------------------------
-    # Slots
+    # Manifest test (background thread)
     # ------------------------------------------------------------------
+
+    def _test_manifest(self):
+        host  = self.manifest_host.text().strip()
+        token = self.manifest_token.text().strip()
+        self._manifest_test_btn.setEnabled(False)
+        self.status.setText("Testing Manifest…")
+        self.status.setStyleSheet("color:#ff9800;")
+
+        from utils.async_runner import run_in_thread
+
+        def _check():
+            from ai.manifest_client import ManifestClient
+            return ManifestClient(host=host, token=token).is_available()
+
+        run_in_thread(
+            _check,
+            on_result=lambda ok: self._on_manifest_test(ok),
+            on_error=lambda e: self._on_manifest_test(False, str(e)),
+        )
+
+    def _on_manifest_test(self, ok: bool, err: str = ""):
+        self._manifest_test_btn.setEnabled(True)
+        if ok:
+            self.status.setText("Manifest ✓  connected")
+            self.status.setStyleSheet("color:#4caf50; font-weight:bold;")
+        else:
+            self.status.setText(
+                f"Manifest ✗  {err or 'not reachable'}\n"
+                "Check that Manifest is running on the configured URL."
+            )
+            self.status.setStyleSheet("color:#f44336;")
+
+    # ------------------------------------------------------------------
+    # Misc slots
+    # ------------------------------------------------------------------
+
+    def _browse_output_dir(self):
+        d = QFileDialog.getExistingDirectory(
+            self, "Select output directory", self.outdir_input.text() or "")
+        if d:
+            self.outdir_input.setText(d)
 
     def _on_mode_change(self, key: str, checked: bool):
         if checked:
@@ -271,9 +349,10 @@ class ConnectionPanel(QDialog):
 
     def _on_backend_change(self, backend: str):
         idx = {"ollama": 0, "openai": 1, "anthropic": 2,
-                "gemini": 3, "manifest": 4}.get(backend, 0)
+               "gemini": 3, "manifest": 4}.get(backend, 0)
         self._ai_stack.setCurrentIndex(idx)
         self.status.setText("")
+        self.status.setStyleSheet("")
 
     def _current_mode(self) -> str:
         for key, rb in self._mode_radios.items():
@@ -282,13 +361,12 @@ class ConnectionPanel(QDialog):
         return "auto"
 
     # ------------------------------------------------------------------
-    # Test connection
+    # Test MCP connection
     # ------------------------------------------------------------------
 
     def _test(self):
         host = self.host_input.text().strip()
         port = self.port_input.value()
-        mode = self._current_mode()
 
         self.test_btn.setEnabled(False)
         self.status.setText(f"Testing {host}:{port}…")
@@ -318,9 +396,7 @@ class ConnectionPanel(QDialog):
             tools = c.list_tools()
             ver   = c.get_blender_version()
             v     = ".".join(str(x) for x in ver)
-            self.status.setText(
-                f"{found}  ✓   Blender {v}  —  {len(tools)} tools"
-            )
+            self.status.setText(f"{found}  ✓   Blender {v}  —  {len(tools)} tools")
             self.status.setStyleSheet("color:#4caf50; font-weight:bold;")
         except Exception as e:
             self.status.setText(f"{found} detected but error: {e}")
@@ -345,7 +421,6 @@ class ConnectionPanel(QDialog):
 
         if backend == "ollama":
             reg_set("ollama_host", self.ollama_host.text().strip())
-            # "(auto-detect)" → save as empty string so OllamaClient auto-picks
             coder   = self.coder_combo.currentText()
             planner = self.planner_combo.currentText()
             reg_set("coder_model",   "" if coder   == "(auto-detect)" else coder)
@@ -357,15 +432,18 @@ class ConnectionPanel(QDialog):
             reg_set("manifest_model", self.manifest_model.text().strip() or "auto")
 
         else:
-            # openai / anthropic / gemini — find the key field on the stack page
             page = self._ai_stack.currentWidget()
             if hasattr(page, "_config_key"):
                 reg_set(page._config_key, page._field.text().strip())
 
-        # on_saved: router rebuild + UI refresh (no reconnect needed)
+        # Pipeline settings
+        reg_set("max_retries",   self.retries_spin.value())
+        reg_set("poll_interval", self.poll_spin.value())
+        reg_set("ai_timeout",    self.timeout_spin.value())
+        reg_set("output_dir",    self.outdir_input.text().strip())
+
         if self.on_saved:
             self.on_saved()
-        # on_connect: full reconnect (called when host/port actually changed)
         if self.on_connect:
             self.on_connect(self.host_input.text().strip(), self.port_input.value())
         self.accept()

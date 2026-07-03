@@ -42,6 +42,21 @@ class AIRouter:
     def active_name(self) -> str:
         return self._active
 
+    @property
+    def active_display_name(self) -> str:
+        """Human-readable name including model, e.g. 'ollama / qwen2.5-coder:7b'."""
+        b = self._backends.get(self._active)
+        # Try resolved model first (post-detect), then configured value
+        model = (getattr(b, "_model",      None) or
+                 getattr(b, "_cfg_model",  None) or
+                 getattr(b, "model",       None))
+        # For Manifest use the configured model name
+        if self._active == "manifest":
+            model = getattr(b, "model", None)
+        if model and model != self._active:
+            return f"{self._active} / {model}"
+        return self._active
+
     def switch(self, backend: str):
         if backend not in self._backends:
             raise ValueError(f"Unknown backend: {backend!r}. "

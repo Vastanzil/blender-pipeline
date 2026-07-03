@@ -164,7 +164,7 @@ class BlenderPipelineStudio(QMainWindow):
             if self.ai:
                 self.ai.rebuild()
                 self.ai_chat.set_orchestrator(self.orchestrator, self.ai)
-                self.status_widget.set_ai(self.ai.active_name)
+                self.status_widget.set_ai(self.ai.active_display_name)
         ConnectionPanel(self, on_connect=self._connect, on_saved=_on_saved).exec()
 
     # ------------------------------------------------------------------
@@ -262,9 +262,10 @@ class BlenderPipelineStudio(QMainWindow):
 
             self.status_widget.set_connected(host, port)
             self.status_widget.set_version(ver)
-            self.status_widget.set_ai(self.ai.active_name)
+            self.status_widget.set_ai(self.ai.active_display_name)
             self.bus.emit("connection.ok", {"host": host, "port": port})
             log.info(f"Connected: Blender {ver}, {self.registry.count()} tools")
+            self._start_health_timer()
 
         except Exception as e:
             self.bus.emit("connection.error", {"error": str(e)})
@@ -309,9 +310,38 @@ class BlenderPipelineStudio(QMainWindow):
             "AI Backends: Ollama · OpenAI · Anthropic · Gemini<br>"
             "Real-time scene sync · WebSocket streaming")
 
+    # ------------------------------------------------------------------
+    # AI backend health polling
+    # ------------------------------------------------------------------
+
+    def _start_health_timer(self):
+        """Start/restart the 30-second AI health-check timer."""
+        if not hasattr(self, "_health_timer"):
+            self._health_timer = QTimer(self)
+            self._health_timer.timeout.connect(self._poll_ai_health)
+        self._health_timer.start(30_000)
+
+    def _poll_ai_health(self):
+        """Background check of active AI backend availability; updates status dot."""
+        if not self.ai:
+            return
+        active = self.ai.active_name
+        display = self.ai.active_display_name
+
+        def _check():
+            backends = self.ai.available_backends()
+            return backends.get(active, None)
+
+        run_in_thread(
+            _check,
+            on_result=lambda ok: self.status_widget.set_ai(display, ok),
+        )
+
     def closeEvent(self, event):
         if self.bridge:
             self.bridge.stop()
+        if hasattr(self, "_health_timer"):
+            self._health_timer.stop()
         reg_set("window_geometry", f"{self.width()}x{self.height()}")
         event.accept()
 

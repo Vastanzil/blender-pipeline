@@ -69,14 +69,14 @@ def test_schema_valid():
 def test_schema_invalid_port_resets():
     from config.schema import validate_config
     cfg, warnings = validate_config({"mcp_port": 99999})
-    assert cfg.mcp_port == 9876
+    assert cfg.mcp_port == 8000  # default port changed from 9876 → 8000 (mcpo)
     assert any("mcp_port" in w for w in warnings)
 
 
 def test_schema_invalid_port_zero():
     from config.schema import validate_config
     cfg, warnings = validate_config({"mcp_port": 0})
-    assert cfg.mcp_port == 9876
+    assert cfg.mcp_port == 8000  # default port changed from 9876 → 8000 (mcpo)
 
 
 def test_schema_invalid_backend_resets():

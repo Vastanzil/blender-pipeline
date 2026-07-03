@@ -5,21 +5,40 @@ Uses dataclass + manual type coercion (stdlib only).
 """
 from dataclasses import dataclass
 
+_VALID_BACKENDS = {"ollama", "openai", "anthropic", "gemini", "manifest"}
+_VALID_MODES    = {"auto", "mcpo", "direct"}
+
 
 @dataclass
 class AppConfig:
+    # MCP connection
     mcp_host:          str   = "localhost"
-    mcp_port:          int   = 9876
-    ai_backend:        str   = "ollama"
+    mcp_port:          int   = 8000
+    connection_mode:   str   = "auto"       # "auto" | "mcpo" | "direct"
+
+    # AI backend
+    ai_backend:        str   = "ollama"     # one of _VALID_BACKENDS
     ollama_host:       str   = "http://localhost:11434"
-    coder_model:       str   = "qwen2.5-coder:7b"
-    planner_model:     str   = "qwen3:8b"
+    coder_model:       str   = ""
+    planner_model:     str   = ""
     openai_api_key:    str   = ""
     anthropic_api_key: str   = ""
     gemini_api_key:    str   = ""
-    output_dir:        str   = ""
+
+    # Manifest AI router
+    manifest_host:     str   = "http://localhost:2099"
+    manifest_token:    str   = ""
+    manifest_model:    str   = "auto"
+
+    # Pipeline behaviour
     max_retries:       int   = 5
     poll_interval:     float = 2.0
+    ai_timeout:        int   = 120          # seconds per AI request
+
+    # Output
+    output_dir:        str   = ""
+
+    # UI
     theme:             str   = "dark"
     window_geometry:   str   = "1600x900"
     last_prompt:       str   = ""
@@ -36,7 +55,7 @@ def validate_config(raw: dict) -> tuple:
     warnings: list = []
     cfg = AppConfig()
 
-    int_fields   = {"mcp_port", "max_retries"}
+    int_fields   = {"mcp_port", "max_retries", "ai_timeout"}
     float_fields = {"poll_interval"}
     bool_fields  = {"auto_connect", "stream_ai"}
 
@@ -55,14 +74,24 @@ def validate_config(raw: dict) -> tuple:
         except (ValueError, TypeError) as e:
             warnings.append(f"Config key {key!r} invalid value {val!r}: {e}")
 
+    # Range checks
     if not (1 <= cfg.mcp_port <= 65535):
-        warnings.append(f"mcp_port {cfg.mcp_port} out of range; reset to 9876")
-        cfg.mcp_port = 9876
+        warnings.append(f"mcp_port {cfg.mcp_port} out of range; reset to 8000")
+        cfg.mcp_port = 8000
     if cfg.max_retries < 1:
         warnings.append("max_retries < 1; reset to 1")
         cfg.max_retries = 1
-    if cfg.ai_backend not in ("ollama", "openai", "anthropic", "gemini"):
-        warnings.append(f"Unknown ai_backend {cfg.ai_backend!r}; reset to ollama")
+    if cfg.ai_timeout < 5:
+        warnings.append("ai_timeout < 5; reset to 30")
+        cfg.ai_timeout = 30
+    if cfg.ai_backend not in _VALID_BACKENDS:
+        warnings.append(
+            f"Unknown ai_backend {cfg.ai_backend!r}; reset to ollama. "
+            f"Valid: {sorted(_VALID_BACKENDS)}")
         cfg.ai_backend = "ollama"
+    if cfg.connection_mode not in _VALID_MODES:
+        warnings.append(
+            f"Unknown connection_mode {cfg.connection_mode!r}; reset to auto.")
+        cfg.connection_mode = "auto"
 
     return cfg, warnings

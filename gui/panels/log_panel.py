@@ -1,9 +1,16 @@
-"""gui/panels/log_panel.py — Real-time colour-coded log panel, subscribed to EventBus."""
+"""gui/panels/log_panel.py — Real-time colour-coded log panel, subscribed to EventBus.
+
+Log lines are also written to disk via LogWriter:
+  ~/blender_pipeline_output/logs/<YYYYMMDD_HHMMSS>.log
+A 📂 button in the header opens the log folder in the system file manager.
+"""
+import os
 import time
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                               QTextEdit, QPushButton, QLabel)
 from PyQt6.QtGui import QTextCursor
 from realtime.qt_bridge import QtBridge
+from utils.log_writer import LogWriter
 
 
 class LogPanel(QWidget):
@@ -11,8 +18,9 @@ class LogPanel(QWidget):
 
     def __init__(self, bus=None, parent=None):
         super().__init__(parent)
-        self._lines  = 0
-        self._relays = []   # keep refs so relays aren't GC'd
+        self._lines      = 0
+        self._relays     = []   # keep QtBridge relay refs alive
+        self._log_writer = LogWriter()
         self._build()
         if bus:
             def _sub(event, fn):
@@ -31,7 +39,9 @@ class LogPanel(QWidget):
                  lambda d: self.success(
                      f"Pipeline complete — {d.get('total_steps',0)} steps "
                      f"in {d.get('elapsed_s',0):.1f}s"))
-            _sub("pipeline.aborted",    lambda d: self.warning("Pipeline aborted"))
+            _sub("pipeline.aborted",
+                 lambda d: self.warning(
+                     f"Pipeline aborted: {d.get('reason','')[:80]}"))
             _sub("mcp.error",
                  lambda d: self.error(f"MCP: {d.get('error','')[:100]}"))
             _sub("scene.updated",       lambda _: self.debug("Scene updated"))
@@ -52,11 +62,19 @@ class LogPanel(QWidget):
         hdr = QHBoxLayout()
         lbl = QLabel("Log")
         lbl.setStyleSheet("font-weight: bold; color: #aaa; padding: 4px 8px;")
+
+        open_btn = QPushButton("📂")
+        open_btn.setFixedWidth(32)
+        open_btn.setToolTip("Open log folder")
+        open_btn.clicked.connect(self._open_log_folder)
+
         clr = QPushButton("Clear")
         clr.setFixedWidth(60)
         clr.clicked.connect(self._clear)
+
         hdr.addWidget(lbl)
         hdr.addStretch()
+        hdr.addWidget(open_btn)
         hdr.addWidget(clr)
         layout.addLayout(hdr)
 
@@ -65,12 +83,22 @@ class LogPanel(QWidget):
         self._log.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         layout.addWidget(self._log)
 
+    def _open_log_folder(self):
+        log_dir = self._log_writer.log_dir
+        log_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.startfile(str(log_dir))          # Windows
+        except AttributeError:
+            import subprocess
+            subprocess.Popen(["xdg-open", str(log_dir)])  # Linux / macOS
+
     def _clear(self):
         self._log.clear()
         self._lines = 0
 
-    def _append(self, text, color="#e0e0e0"):
+    def _append(self, text: str, color: str = "#e0e0e0"):
         ts = time.strftime("%H:%M:%S")
+        plain = f"[{ts}] {text}"
         self._log.append(
             f'<span style="color:#555">[{ts}]</span> '
             f'<span style="color:{color}">{text}</span>'
@@ -84,12 +112,19 @@ class LogPanel(QWidget):
                                 QTextCursor.MoveMode.KeepAnchor, 100)
             cursor.removeSelectedText()
             self._lines -= 100
+        # Persist to disk (non-blocking — file write is fast)
+        try:
+            self._log_writer.write(plain)
+        except Exception:
+            pass  # never let log I/O crash the GUI
 
     def _on_step_done(self, d):
         if d.get("success"):
             self.success(f"  OK   {d.get('description','')[:60]}")
         else:
-            self.error(f"  FAIL {d.get('description','')[:60]}: {d.get('error','')[:60]}")
+            self.error(
+                f"  FAIL {d.get('description','')[:60]}: "
+                f"{d.get('error','')[:60]}")
 
     def info(self,    msg): self._append(msg, "#e0e0e0")
     def success(self, msg): self._append(msg, "#4caf50")

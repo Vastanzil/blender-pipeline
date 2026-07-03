@@ -17,6 +17,7 @@ DEFAULTS = {
     "output_dir":        "",
     "max_retries":       5,
     "poll_interval":     2.0,
+    "ai_timeout":        120,
     "theme":             "dark",
     "window_geometry":   "1600x900",
     "last_prompt":       "",

@@ -59,12 +59,14 @@ class Orchestrator:
             plan = self._ai.plan(plan_prompt)
         except Exception as e:
             log.error(f"Planning failed: {e}")
-            self._emit("pipeline.aborted", {"reason": str(e)})
+            self._emit("pipeline.aborted", {"reason": str(e), "phase": "planning"})
             return []
 
         if not plan:
             log.warning("Empty plan returned by AI")
-            self._emit("pipeline.aborted", {"reason": "empty plan"})
+            self._emit("pipeline.aborted",
+                       {"reason": "AI returned no steps — try rephrasing your prompt",
+                        "phase": "planning"})
             return []
 
         self._emit("pipeline.plan", {"total": len(plan), "steps": plan})
@@ -122,7 +124,8 @@ class Orchestrator:
                 "description": description,
                 "success":     result.success,
                 "attempts":    result.attempts,
-                "error":       result.error,
+                "error":       result.error or "",
+                "code":        result.code  or "",
             })
 
             checkpoint.save(steps)

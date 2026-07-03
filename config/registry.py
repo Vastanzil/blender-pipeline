@@ -8,6 +8,10 @@ Cross-platform config persistence.
 
 First run: file doesn't exist — DEFAULTS are returned transparently.
 save_config() creates the directory automatically.
+
+In-memory cache: load_config() reads from disk once and caches the result.
+Subsequent get() calls return from cache — no repeated JSON file I/O during
+pipeline execution.  set() keeps both cache and disk in sync.
 """
 import json
 import sys
@@ -17,6 +21,11 @@ from typing import Any
 from .defaults import DEFAULTS
 
 APP_NAME = "BlenderPipelineStudio"
+
+# In-memory cache — populated on first load_config() call.
+# set() writes through to disk and updates cache.
+# reset_to_defaults() clears cache so the next call re-reads from disk.
+_cache: dict | None = None
 
 
 def _config_path() -> Path:
@@ -34,6 +43,9 @@ def _config_path() -> Path:
 
 
 def load_config() -> dict:
+    global _cache
+    if _cache is not None:
+        return _cache
     p = _config_path()
     disk: dict = {}
     if p.exists():
@@ -41,14 +53,19 @@ def load_config() -> dict:
             disk = json.loads(p.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             disk = {}
-    return {**DEFAULTS, **disk}
+    _cache = {**DEFAULTS, **disk}
+    return _cache
 
 
 def save_config(data: dict) -> None:
+    global _cache
     p = _config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    merged = {**DEFAULTS, **load_config(), **data}
+    # Merge: defaults < existing disk/cache < new data
+    base = _cache if _cache is not None else {**DEFAULTS}
+    merged = {**DEFAULTS, **base, **data}
     p.write_text(json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8")
+    _cache = merged
 
 
 def get(key: str, default: Any = None) -> Any:
@@ -65,6 +82,8 @@ def set(key: str, value: Any) -> None:  # noqa: A001
 
 
 def reset_to_defaults() -> None:
+    global _cache
+    _cache = None
     p = _config_path()
     if p.exists():
         p.unlink()
