@@ -11,35 +11,7 @@ Blender Pipeline Studio connects to [blender-mcp](https://github.com/ahujasid/bl
 ---
 
 ## Screenshots
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  BLENDER PIPELINE STUDIO          ● localhost:8000   Blender 5.1  AI: ollama│
-├──────────────┬──────────────────────────────────────────────────────────────┤
-│  Tools       │  AI Pipeline │ Tool Runner │ Code │ Scene │ Render           │
-│  ──────────  │                                                               │
-│  Search...   │  Prompt:                                                      │
-│  22 tools    │  ┌─────────────────────────────────────────────────────────┐ │
-│              │  │ Create a low-poly pine forest with 30 trees and HDRI   │ │
-│  get_scene_  │  │ lighting, scatter them randomly on a plane              │ │
-│  info        │  └─────────────────────────────────────────────────────────┘ │
-│  get_object_ │                                                               │
-│  info        │  AI Backend: [ollama ✓ ▼]   [Run Pipeline] [Stop]           │
-│  execute_    │                                                               │
-│  blender_    │  ████████████████████░░░  Step 3/7: Scatter instances        │
-│  code        │                                                               │
-│  create_     │  Pipeline Steps                                               │
-│  object      │  [OK] 1. Create base plane                                   │
-│  set_        │  [OK] 2. Create pine tree template                           │
-│  material    │  [OK] 3. Scatter 30 instances                                │
-│  ...         │  ... 4. Add HDRI world lighting                              │
-├──────────────┴──────────────────────────────────────────────────────────────┤
-│  Log                                                                    Clear│
-│  [14:23:01] Pipeline: Create a low-poly pine forest...                       │
-│  [14:23:02] Plan ready — 7 steps                                            │
-│  [14:23:03]   OK   Create base plane                                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/55e422b9-9e52-46bd-aec2-792e8d4f7ba7" />
 
 ---
 
