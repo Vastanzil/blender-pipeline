@@ -1,89 +1,60 @@
 """
-ai/router.py
-AIRouter — runtime-switchable AI backend.
-Backends: ollama (default), openai, anthropic, gemini, manifest.
+AIRouter — Manifest-only AI backend for v3.0.
+
+All multi-backend code was deleted in phase 1. This router now
+delegates to a single ManifestClient instance.
 """
+from __future__ import annotations
+
 from config.registry import get
-from .ollama_client    import OllamaClient
-from .openai_client    import OpenAIClient
-from .anthropic_client import AnthropicClient
-from .gemini_client    import GeminiClient
-from .manifest_client  import ManifestClient
+from .manifest_client import ManifestClient
 
 
 class AIRouter:
     def __init__(self):
-        self._backends: dict = {}
-        self._active:   str  = get("ai_backend", "ollama")
-        self._build_backends()
+        self._client: ManifestClient | None = None
+        self.rebuild()
 
-    def _build_backends(self):
-        self._backends = {
-            "ollama":    OllamaClient(
-                host          = get("ollama_host", "http://localhost:11434"),
-                model         = get("coder_model",   ""),
-                planner_model = get("planner_model",  ""),
-            ),
-            "openai":    OpenAIClient(api_key=get("openai_api_key", "")),
-            "anthropic": AnthropicClient(api_key=get("anthropic_api_key", "")),
-            "gemini":    GeminiClient(api_key=get("gemini_api_key", "")),
-            "manifest":  ManifestClient(
-                host  = get("manifest_host",  "http://localhost:2099"),
-                token = get("manifest_token", ""),
-                model = get("manifest_model", "auto"),
-            ),
-        }
-
-    @property
-    def active(self):
-        return self._backends[self._active]
+    def rebuild(self) -> None:
+        """Instantiate ManifestClient from live config."""
+        self._client = ManifestClient(
+            host=get("manifest_host", "http://localhost:2099"),
+            token=get("manifest_token", ""),
+            model=get("manifest_model", "auto"),
+            timeout=int(get("ai_timeout", 120)),
+        )
 
     @property
     def active_name(self) -> str:
-        return self._active
+        return "manifest"
 
     @property
     def active_display_name(self) -> str:
-        """Human-readable name including model, e.g. 'ollama / qwen2.5-coder:7b'."""
-        b = self._backends.get(self._active)
-        # Try resolved model first (post-detect), then configured value
-        model = (getattr(b, "_model",      None) or
-                 getattr(b, "_cfg_model",  None) or
-                 getattr(b, "model",       None))
-        # For Manifest use the configured model name
-        if self._active == "manifest":
-            model = getattr(b, "model", None)
-        if model and model != self._active:
-            return f"{self._active} / {model}"
-        return self._active
+        """Human-readable name, e.g. 'manifest / auto'."""
+        if not self._client:
+            return "manifest"
+        model = getattr(self._client, "_model", None)
+        if not model:
+            model = self._client.model
+        return f"manifest / {model}" if model else "manifest"
 
-    def switch(self, backend: str):
-        if backend not in self._backends:
-            raise ValueError(f"Unknown backend: {backend!r}. "
-                             f"Choose from {list(self._backends)}")
-        self._active = backend
+    @property
+    def active(self):
+        """Return the active backend client (ManifestClient)."""
+        return self._client
 
-    def rebuild(self):
-        """Re-read config and recreate all backends.
+    def available_backends(self) -> dict[str, bool]:
+        """Return {name: is_available} for all backends."""
+        return {"manifest": self._client.is_available() if self._client else False}
 
-        Call this after the user saves new settings (model selection, API keys,
-        Manifest token, etc.) so changes take effect without needing to reconnect.
-        The active backend name is preserved.
-        """
-        self._build_backends()
-        # Sync active_name in case it was cleared somehow
-        if self._active not in self._backends:
-            self._active = get("ai_backend", "ollama")
+    def generate_code(self, prompt: str, images: list[str] | None = None) -> str:
+        return self._client.generate_code(prompt, images=images)
 
-    def generate_code(self, prompt: str) -> str:
-        return self.active.generate_code(prompt)
-
-    def plan(self, prompt: str) -> list:
-        return self.active.plan(prompt)
+    def plan(self, prompt: str, images: list[str] | None = None) -> list[str]:
+        return self._client.plan(prompt, images=images)
 
     def fix_error(self, code: str, error: str, context: str = "") -> str:
-        return self.active.fix_error(code, error, context)
+        return self._client.fix_error(code, error, context)
 
-    def available_backends(self) -> dict:
-        """Return {name: is_available} for all backends."""
-        return {name: b.is_available() for name, b in self._backends.items()}
+    def is_available(self) -> bool:
+        return bool(self._client and self._client.is_available())

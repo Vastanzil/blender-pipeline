@@ -5,7 +5,7 @@ Uses dataclass + manual type coercion (stdlib only).
 """
 from dataclasses import dataclass
 
-_VALID_BACKENDS = {"ollama", "openai", "anthropic", "gemini", "manifest"}
+_VALID_BACKENDS = {"manifest"}
 _VALID_MODES    = {"auto", "mcpo", "direct"}
 
 
@@ -16,14 +16,8 @@ class AppConfig:
     mcp_port:          int   = 8000
     connection_mode:   str   = "auto"       # "auto" | "mcpo" | "direct"
 
-    # AI backend
-    ai_backend:        str   = "ollama"     # one of _VALID_BACKENDS
-    ollama_host:       str   = "http://localhost:11434"
-    coder_model:       str   = ""
-    planner_model:     str   = ""
-    openai_api_key:    str   = ""
-    anthropic_api_key: str   = ""
-    gemini_api_key:    str   = ""
+    # AI backend (Manifest only)
+    ai_backend:        str   = "manifest"
 
     # Manifest AI router
     manifest_host:     str   = "http://localhost:2099"
@@ -86,9 +80,8 @@ def validate_config(raw: dict) -> tuple:
         cfg.ai_timeout = 30
     if cfg.ai_backend not in _VALID_BACKENDS:
         warnings.append(
-            f"Unknown ai_backend {cfg.ai_backend!r}; reset to ollama. "
-            f"Valid: {sorted(_VALID_BACKENDS)}")
-        cfg.ai_backend = "ollama"
+            f"Unknown ai_backend {cfg.ai_backend!r}; reset to manifest.")
+        cfg.ai_backend = "manifest"
     if cfg.connection_mode not in _VALID_MODES:
         warnings.append(
             f"Unknown connection_mode {cfg.connection_mode!r}; reset to auto.")

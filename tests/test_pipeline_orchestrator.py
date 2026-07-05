@@ -27,10 +27,10 @@ class MockClient:
 class MockAI:
     active_name = "mock"
 
-    def plan(self, prompt):
+    def plan(self, prompt, images=None):
         return ["Create cube", "Add material", "Set render engine"]
 
-    def generate_code(self, prompt):
+    def generate_code(self, prompt, images=None):
         return "import bpy\nprint('step done')"
 
     def fix_error(self, code, error, context=""):
@@ -84,7 +84,7 @@ def test_orchestrator_abort(tmp_path, monkeypatch):
         def __init__(self, orch_ref):
             self._ref = orch_ref
             self._n   = 0
-        def generate_code(self, prompt):
+        def generate_code(self, prompt, images=None):
             self._n += 1
             if self._n >= 2:
                 self._ref.abort()
