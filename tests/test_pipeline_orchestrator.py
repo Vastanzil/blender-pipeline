@@ -108,7 +108,7 @@ def test_orchestrator_empty_plan(tmp_path, monkeypatch):
     from realtime.event_bus import EventBus
 
     class EmptyPlanAI(MockAI):
-        def plan(self, prompt): return []
+        def plan(self, prompt, images=None): return []
 
     bus    = EventBus()
     aborted = []

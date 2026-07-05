@@ -239,6 +239,13 @@ class BlenderPipelineStudio(QMainWindow):
 
     def _finish_connect(self, client, host: str, port: int):
         """Complete a successful connection — runs on the GUI thread."""
+        # Guard: require output_dir before starting orchestrator
+        if not get("output_dir", ""):
+            def _on_saved():
+                if self.ai:
+                    self.ai.rebuild()
+            ConnectionPanel(self, on_saved=_on_saved).exec()
+
         try:
             self.client   = client
             self.registry = ToolRegistry(client).refresh()

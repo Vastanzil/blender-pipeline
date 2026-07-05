@@ -31,6 +31,7 @@ class AppConfig:
 
     # Output
     output_dir:        str   = ""
+    rag_corpus_dir:    str   = ""
 
     # UI
     theme:             str   = "dark"

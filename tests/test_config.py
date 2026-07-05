@@ -9,7 +9,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 def test_defaults_all_present():
     from config.defaults import DEFAULTS
     required = ["mcp_host", "mcp_port", "ai_backend", "manifest_host",
-                "manifest_token", "manifest_model", "max_retries", "theme"]
+                "manifest_token", "manifest_model", "max_retries", "theme",
+                "rag_corpus_dir"]
     for k in required:
         assert k in DEFAULTS, f"Missing default: {k}"
 

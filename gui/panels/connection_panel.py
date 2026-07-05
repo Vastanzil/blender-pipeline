@@ -143,6 +143,23 @@ class ConnectionPanel(QDialog):
         out_row.addWidget(browse_btn)
         ps_form.addRow("Output dir:", out_row)
 
+        self._outdir_warn = QLabel("⚠ Output directory is required before running a pipeline.")
+        self._outdir_warn.setStyleSheet("color: #ff9800; font-size: 10px;")
+        self._outdir_warn.setVisible(not bool(get("output_dir", "")))
+        self.outdir_input.textChanged.connect(
+            lambda t: self._outdir_warn.setVisible(not bool(t.strip())))
+        ps_form.addRow("", self._outdir_warn)
+
+        rag_row = QHBoxLayout()
+        self.ragdir_input = QLineEdit(get("rag_corpus_dir", ""))
+        self.ragdir_input.setPlaceholderText("(default: <output_dir>/_rag_corpus/)")
+        rag_browse_btn = QPushButton("Browse…")
+        rag_browse_btn.setFixedWidth(70)
+        rag_browse_btn.clicked.connect(self._browse_rag_dir)
+        rag_row.addWidget(self.ragdir_input)
+        rag_row.addWidget(rag_browse_btn)
+        ps_form.addRow("RAG corpus dir:", rag_row)
+
         layout.addWidget(ps_group)
 
         # ── Status ────────────────────────────────────────────────────
@@ -245,6 +262,12 @@ class ConnectionPanel(QDialog):
         if d:
             self.outdir_input.setText(d)
 
+    def _browse_rag_dir(self):
+        d = QFileDialog.getExistingDirectory(
+            self, "Select RAG corpus directory", self.ragdir_input.text() or "")
+        if d:
+            self.ragdir_input.setText(d)
+
     def _on_mode_change(self, key: str, checked: bool):
         if checked:
             self.port_input.setValue({"mcpo": 8000, "direct": 9876, "auto": 8000}[key])
@@ -268,6 +291,7 @@ class ConnectionPanel(QDialog):
         reg_set("poll_interval", self.poll_spin.value())
         reg_set("ai_timeout",    self.timeout_spin.value())
         reg_set("output_dir",    self.outdir_input.text().strip())
+        reg_set("rag_corpus_dir", self.ragdir_input.text().strip())
 
         if self.on_saved:
             self.on_saved()

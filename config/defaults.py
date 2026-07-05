@@ -9,6 +9,7 @@ DEFAULTS = {
     "manifest_token":  "",
     "manifest_model":  "auto",
     "output_dir":      "",
+    "rag_corpus_dir":  "",
     "max_retries":     5,
     "poll_interval":   2.0,
     "ai_timeout":      120,
