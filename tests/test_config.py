@@ -8,8 +8,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 def test_defaults_all_present():
     from config.defaults import DEFAULTS
-    required = ["mcp_host", "mcp_port", "ai_backend", "ollama_host",
-                "coder_model", "planner_model", "max_retries", "theme"]
+    required = ["mcp_host", "mcp_port", "ai_backend", "manifest_host",
+                "manifest_token", "manifest_model", "max_retries", "theme"]
     for k in required:
         assert k in DEFAULTS, f"Missing default: {k}"
 
@@ -61,9 +61,9 @@ def test_get_returns_default_for_unknown_key(monkeypatch, tmp_path):
 
 def test_schema_valid():
     from config.schema import validate_config
-    cfg, warnings = validate_config({"mcp_port": 9876, "ai_backend": "ollama"})
+    cfg, warnings = validate_config({"mcp_port": 9876, "ai_backend": "manifest"})
     assert cfg.mcp_port == 9876
-    assert cfg.ai_backend == "ollama"
+    assert cfg.ai_backend == "manifest"
 
 
 def test_schema_invalid_port_resets():
@@ -82,7 +82,7 @@ def test_schema_invalid_port_zero():
 def test_schema_invalid_backend_resets():
     from config.schema import validate_config
     cfg, warnings = validate_config({"ai_backend": "unknown_llm"})
-    assert cfg.ai_backend == "ollama"
+    assert cfg.ai_backend == "manifest"
     assert any("ai_backend" in w for w in warnings)
 
 

@@ -4,7 +4,9 @@ AI Pipeline panel: natural-language prompt → orchestrator → live step progre
 
 Features:
   - Run / Stop pipeline
-  - Live backend selector (populated from AIRouter.available_backends())
+  - Image reference upload (thumbnail strip, drag-drop)
+  - Quick workflow picker
+  - Goal analysis label shown before steps
   - Per-step progress list with pass/fail markers
   - Step detail view — click a step to see generated code + error
   - Abort reason displayed with red label and helpful hint
@@ -17,6 +19,8 @@ from PyQt6.QtGui import QFont
 from utils.async_runner import AsyncWorker
 from config.registry import get, set as reg_set
 from realtime.qt_bridge import QtBridge
+from gui.widgets.image_attachment import ImageAttachmentWidget
+from pipeline.workflow_catalog import WORKFLOWS
 
 
 class AIChatPanel(QWidget):
@@ -25,34 +29,22 @@ class AIChatPanel(QWidget):
         self._orchestrator = None
         self._ai     = None
         self._worker = None
-        self._relays = []       # keep QtBridge relays alive (GC protection)
-        self._last_steps: list = []   # [{index, description, code, error, attempts, success}]
+        self._relays = []
+        self._last_steps: list = []
         self._build()
         if bus:
             def _sub(event, fn):
                 self._relays.append(QtBridge.subscribe(bus, event, fn))
 
-            _sub("pipeline.step.start", self._on_step_start)
-            _sub("pipeline.step.done",  self._on_step_done)
-            _sub("pipeline.done",       self._on_pipeline_done)
-            _sub("pipeline.aborted",    self._on_pipeline_aborted)
+            _sub("pipeline.step.start",    self._on_step_start)
+            _sub("pipeline.step.done",     self._on_step_done)
+            _sub("pipeline.done",          self._on_pipeline_done)
+            _sub("pipeline.aborted",       self._on_pipeline_aborted)
+            _sub("pipeline.goal_analysis", self._on_goal_analysis)
 
     def set_orchestrator(self, orchestrator, ai_router):
         self._orchestrator = orchestrator
         self._ai = ai_router
-        self._refresh_backends()
-
-    def _refresh_backends(self):
-        if not self._ai:
-            return
-        self._backend_combo.clear()
-        for name, ok in self._ai.available_backends().items():
-            suffix = " ✓" if ok else ""
-            self._backend_combo.addItem(name + suffix, name)
-        for i in range(self._backend_combo.count()):
-            if self._backend_combo.itemData(i) == self._ai.active_name:
-                self._backend_combo.setCurrentIndex(i)
-                break
 
     def _build(self):
         layout = QVBoxLayout(self)
@@ -70,8 +62,21 @@ class AIChatPanel(QWidget):
         hint.setStyleSheet("color: #888; font-size: 11px;")
         layout.addWidget(hint)
 
+        # ── Quick workflow picker ─────────────────────────────────────
+        wf_row = QHBoxLayout()
+        wf_row.addWidget(QLabel("Quick Workflow:"))
+        self._workflow_combo = QComboBox()
+        self._workflow_combo.addItem("Custom…", None)
+        for key, wf in WORKFLOWS.items():
+            self._workflow_combo.addItem(wf["name"], key)
+        self._workflow_combo.currentIndexChanged.connect(self._on_workflow_selected)
+        wf_row.addWidget(self._workflow_combo, 1)
+        layout.addLayout(wf_row)
+
+        # ── Prompt group ──────────────────────────────────────────────
         pg = QGroupBox("Prompt")
         pgl = QVBoxLayout(pg)
+
         self._prompt = QTextEdit()
         self._prompt.setPlaceholderText(
             "Examples:\n"
@@ -84,17 +89,15 @@ class AIChatPanel(QWidget):
         self._prompt.setMaximumHeight(150)
         self._prompt.setText(get("last_prompt", ""))
         pgl.addWidget(self._prompt)
-        layout.addWidget(pg)
 
-        ai_row = QHBoxLayout()
-        ai_row.addWidget(QLabel("AI Backend:"))
-        self._backend_combo = QComboBox()
-        # Placeholder list — replaced by _refresh_backends() after connect
-        self._backend_combo.addItems(["ollama", "openai", "anthropic", "gemini", "manifest"])
-        self._backend_combo.currentIndexChanged.connect(self._switch_backend)
-        ai_row.addWidget(self._backend_combo)
-        ai_row.addStretch()
-        layout.addLayout(ai_row)
+        img_hint = QLabel("Optionally attach reference images — the AI will use them as visual context.")
+        img_hint.setStyleSheet("color: #777; font-size: 10px;")
+        pgl.addWidget(img_hint)
+
+        self._image_bar = ImageAttachmentWidget()
+        pgl.addWidget(self._image_bar)
+
+        layout.addWidget(pg)
 
         btn_row = QHBoxLayout()
         self._run_btn  = QPushButton("Run Pipeline")
@@ -110,10 +113,19 @@ class AIChatPanel(QWidget):
 
         self._progress = QProgressBar()
         self._progress.setVisible(False)
+
+        self._goal_lbl = QLabel("")
+        self._goal_lbl.setWordWrap(True)
+        self._goal_lbl.setStyleSheet(
+            "color: #64b5f6; font-style: italic; font-size: 11px;")
+        self._goal_lbl.setVisible(False)
+
         self._status_lbl = QLabel("")
         self._status_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
         self._status_lbl.setWordWrap(True)
+
         layout.addWidget(self._progress)
+        layout.addWidget(self._goal_lbl)
         layout.addWidget(self._status_lbl)
 
         # ── Steps list + detail view ──────────────────────────────────
@@ -141,17 +153,13 @@ class AIChatPanel(QWidget):
         layout.addWidget(sg)
 
     # ------------------------------------------------------------------
-    # Backend switching
+    # Workflow picker
     # ------------------------------------------------------------------
 
-    def _switch_backend(self, idx):
-        if self._ai and idx >= 0:
-            backend = self._backend_combo.itemData(idx)
-            if backend:
-                try:
-                    self._ai.switch(backend)
-                except Exception:
-                    pass
+    def _on_workflow_selected(self, idx):
+        key = self._workflow_combo.itemData(idx)
+        if key and key in WORKFLOWS:
+            self._prompt.setPlainText(WORKFLOWS[key]["prompt_template"])
 
     # ------------------------------------------------------------------
     # Run / Stop
@@ -166,10 +174,17 @@ class AIChatPanel(QWidget):
         if not prompt:
             self._status_lbl.setText("Enter a prompt first.")
             return
+
+        wf_key = self._workflow_combo.currentData()
+        skill_hint = WORKFLOWS[wf_key].get("skill_hint", "") if wf_key else ""
+        images = self._image_bar.images()
+
         reg_set("last_prompt", prompt)
         self._steps.clear()
         self._last_steps.clear()
         self._detail.setVisible(False)
+        self._goal_lbl.setText("")
+        self._goal_lbl.setVisible(False)
         self._progress.setValue(0)
         self._progress.setVisible(True)
         self._status_lbl.setText("Planning…")
@@ -179,7 +194,8 @@ class AIChatPanel(QWidget):
 
         orch = self._orchestrator
 
-        self._worker = AsyncWorker(lambda: orch.run(prompt))
+        self._worker = AsyncWorker(
+            lambda: orch.run(prompt, images=images, skill_hint=skill_hint))
         self._worker.result_ready.connect(
             lambda steps: self._on_pipeline_done({"total_steps": len(steps)}))
         self._worker.error_raised.connect(
@@ -203,6 +219,12 @@ class AIChatPanel(QWidget):
     # Event handlers
     # ------------------------------------------------------------------
 
+    def _on_goal_analysis(self, d):
+        summary = d.get("summary", "")
+        if summary:
+            self._goal_lbl.setText(f"Goal: {summary}")
+            self._goal_lbl.setVisible(True)
+
     def _on_step_start(self, d):
         idx   = d.get("index", 0)
         total = d.get("total", 1)
@@ -222,7 +244,6 @@ class AIChatPanel(QWidget):
         code     = d.get("code", "")
         error    = d.get("error", "")
 
-        # Store for detail view
         self._last_steps.append({
             "index": idx, "description": desc,
             "code": code, "error": error,
@@ -241,24 +262,21 @@ class AIChatPanel(QWidget):
         self._status_lbl.setText(f"Done — {n} steps completed.")
         self._status_lbl.setStyleSheet("color:#4caf50; font-size:11px;")
         self._progress.setVisible(False)
+        self._image_bar.clear()
         self._reset_buttons()
 
     def _on_pipeline_aborted(self, d):
         reason = d.get("reason", "unknown error")
         phase  = d.get("phase", "")
 
-        # Friendly hints for common errors
         hint = ""
         reason_lower = reason.lower()
-        if "11434" in reason or "ollama" in reason_lower:
-            hint = ("\n→ Ollama is not running. Start it, or switch AI Backend "
-                    "to 'manifest' in File › Connect / Setup")
-        elif "invalid leading whitespace" in reason_lower or "reserved character" in reason_lower:
+        if any(w in reason_lower for w in ("invalid leading whitespace", "reserved character")):
             hint = ("\n→ Your API token has bad characters. Re-paste it in "
                     "File › Connect / Setup (avoid trailing spaces/newlines)")
         elif any(w in reason_lower for w in
                  ("connection", "refused", "model", "404", "not found", "unreachable")):
-            hint = "\n→ Check AI Backend in File › Connect / Setup"
+            hint = "\n→ Check Manifest AI settings in File › Connect / Setup"
 
         phase_str = f" ({phase})" if phase else ""
         self._status_lbl.setText(f"Aborted{phase_str}: {reason[:120]}{hint}")

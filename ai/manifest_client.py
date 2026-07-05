@@ -1,22 +1,8 @@
 """
 ai/manifest_client.py
-=====================
 Manifest AI router client (http://localhost:2099).
 
-Manifest is a local LLM proxy/router that speaks both OpenAI-compatible
-and Anthropic-compatible APIs. This client uses the OpenAI-compatible
-endpoint (/v1/chat/completions) with a Bearer token.
-
-When model="auto", Manifest decides which underlying model/provider to use
-(it can route to local Ollama, Claude, GPT-4, etc. based on its own config).
-
-Setup:
-  1. Install Manifest: https://github.com/mnfst/manifest
-  2. Start it on port 2099
-  3. Copy your mnfst_xxx token from Manifest's dashboard
-  4. Add to app: Connection Setup → AI Backend → manifest
-
-env fallback: MANIFEST_TOKEN=mnfst_xxx
+Modified for v3.0 to support image reference upload and vision input.
 """
 from __future__ import annotations
 
@@ -25,6 +11,13 @@ import os
 import re
 import requests
 
+# NEW: encode image file paths to base64 for OpenAI-like vision input
+def _encode_image(path: str) -> tuple[str, str]:
+    """Return (base64_data, mime_type) for vision URL encoding."""
+    import base64, mimetypes
+    data = open(path, "rb").read()
+    mime = mimetypes.guess_type(path)[0] or "image/png"
+    return base64.b64encode(data).decode(), mime
 
 class ManifestClient:
     def __init__(self, host: str = "http://localhost:2099",
@@ -41,7 +34,7 @@ class ManifestClient:
         self.timeout = timeout
 
     # ------------------------------------------------------------------
-    # Internal
+    # Internal helpers
     # ------------------------------------------------------------------
 
     def _headers(self) -> dict:
@@ -50,7 +43,22 @@ class ManifestClient:
             h["Authorization"] = f"Bearer {self.token}"
         return h
 
-    def _chat(self, messages: list) -> str:
+    def _build_content(self, text: str, images: list[str] | None) -> list | str:
+        if not images:
+            return text
+        parts = [{"type": "text", "text": text}]
+        for img_path in images:
+            try:
+                b64, mime = _encode_image(img_path)
+                parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
+            except Exception:
+                continue
+        return parts
+
+    def _chat(self, messages: list, images: list[str] | None = None) -> str:
+        if messages and images:
+            messages[-1] = {**messages[-1], "content": self._build_content(messages[-1]["content"], images)}
+
         payload = {"model": self.model, "messages": messages}
         r = requests.post(
             f"{self.host}/v1/chat/completions",
@@ -63,10 +71,10 @@ class ManifestClient:
         return data["choices"][0]["message"]["content"]
 
     # ------------------------------------------------------------------
-    # Public interface (same as all other AI clients)
+    # Public interface (updated signatures to accept images=None)
     # ------------------------------------------------------------------
 
-    def generate_code(self, prompt: str) -> str:
+    def generate_code(self, prompt: str, images: list[str] | None = None) -> str:
         return self._chat([
             {
                 "role":    "system",
@@ -75,10 +83,10 @@ class ManifestClient:
                     "Return ONLY executable Python code, no explanation."
                 ),
             },
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": self._build_content(prompt, images)},
         ])
 
-    def plan(self, prompt: str) -> list:
+    def plan(self, prompt: str, images: list[str] | None = None) -> list[str]:
         resp = self._chat([
             {
                 "role":    "system",
@@ -88,7 +96,7 @@ class ManifestClient:
                     "Example: [\"Create base mesh\", \"Add material\", \"Set lighting\"]"
                 ),
             },
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": self._build_content(prompt, images)},
         ])
         # Try to extract a JSON array
         m = re.search(r'\[.*?\]', resp, re.DOTALL)
@@ -102,7 +110,7 @@ class ManifestClient:
                  for l in resp.splitlines() if l.strip()]
         return [l for l in lines if l]
 
-    def fix_error(self, code: str, error: str, context: str = "") -> str:
+    def fix_error(self, code: str, error: str, context: str = "", images: list[str] | None = None) -> str:
         return self._chat([
             {
                 "role":    "system",
@@ -116,7 +124,7 @@ class ManifestClient:
                     f"CONTEXT:\n{context}"
                 ),
             },
-        ])
+        ], images=images or None)
 
     def is_available(self) -> bool:
         """Return True if Manifest is running and reachable."""

@@ -34,7 +34,8 @@ class Orchestrator:
             except Exception:
                 pass
 
-    def run(self, prompt: str) -> list:
+    def run(self, prompt: str, images: list | None = None,
+            skill_hint: str = "") -> list:
         self._abort_flag = False
         t0 = time.perf_counter()
         log.info(f"Pipeline start: {prompt[:70]}")
@@ -48,15 +49,28 @@ class Orchestrator:
             ctx = ""
             log.warning(f"Context build failed: {e}")
 
-        # 2. Plan
+        # 2. Goal analysis — describe intent before executing
+        try:
+            goal_prompt = (
+                f"Briefly describe in 1-3 sentences what Blender actions you will "
+                f"perform for this request. Do NOT write code yet.\n\nRequest: {prompt}"
+            )
+            goal_summary = self._ai.generate_code(goal_prompt, images=images)
+            self._emit("pipeline.goal_analysis", {"summary": goal_summary[:300]})
+            log.info(f"Goal: {goal_summary[:80]}")
+        except Exception:
+            pass
+
+        # 3. Plan
+        skill_section = f"\nSKILL HINTS: {skill_hint}\n" if skill_hint else ""
         plan_prompt = (
-            f"{ctx}\n\nUSER REQUEST: {prompt}\n\n"
+            f"{ctx}{skill_section}\n\nUSER REQUEST: {prompt}\n\n"
             "Return a JSON array of short step descriptions "
             "(each step is one bpy operation). "
             "Maximum 10 steps. Be concise."
         )
         try:
-            plan = self._ai.plan(plan_prompt)
+            plan = self._ai.plan(plan_prompt, images=images)
         except Exception as e:
             log.error(f"Planning failed: {e}")
             self._emit("pipeline.aborted", {"reason": str(e), "phase": "planning"})
@@ -93,7 +107,7 @@ class Orchestrator:
                 "Return ONLY executable Python code. No explanation."
             )
             try:
-                code = self._ai.generate_code(code_prompt)
+                code = self._ai.generate_code(code_prompt, images=images)
                 # Strip markdown fences if present
                 if "```" in code:
                     import re
