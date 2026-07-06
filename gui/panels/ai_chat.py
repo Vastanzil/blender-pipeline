@@ -11,9 +11,11 @@ Features:
   - Step detail view — click a step to see generated code + error
   - Abort reason displayed with red label and helpful hint
 """
+import time
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
                               QPushButton, QLabel, QComboBox, QProgressBar,
-                              QGroupBox, QListWidget, QListWidgetItem, QSplitter)
+                              QGroupBox, QListWidget, QListWidgetItem, QSplitter,
+                              QDialog, QDialogButtonBox)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from utils.async_runner import AsyncWorker
@@ -100,14 +102,17 @@ class AIChatPanel(QWidget):
         layout.addWidget(pg)
 
         btn_row = QHBoxLayout()
-        self._run_btn  = QPushButton("Run Pipeline")
-        self._stop_btn = QPushButton("Stop")
+        self._run_btn    = QPushButton("Run Pipeline")
+        self._resume_btn = QPushButton("Resume…")
+        self._stop_btn   = QPushButton("Stop")
         self._run_btn.setObjectName("success")
         self._stop_btn.setObjectName("danger")
         self._stop_btn.setEnabled(False)
         self._run_btn.clicked.connect(self._run)
+        self._resume_btn.clicked.connect(self._resume)
         self._stop_btn.clicked.connect(self._stop)
         btn_row.addWidget(self._run_btn)
+        btn_row.addWidget(self._resume_btn)
         btn_row.addWidget(self._stop_btn)
         layout.addLayout(btn_row)
 
@@ -202,6 +207,84 @@ class AIChatPanel(QWidget):
             lambda e: self._on_pipeline_aborted({"reason": e, "phase": "worker"}))
         self._worker.start()
 
+    def _resume(self):
+        if not self._orchestrator:
+            self._status_lbl.setText("Not connected to Blender.")
+            self._status_lbl.setStyleSheet("color:#f44336;")
+            return
+
+        from pipeline.checkpoint import Checkpoint
+        runs = Checkpoint.list_runs()
+        if not runs:
+            self._status_lbl.setText("No saved checkpoints found.")
+            self._status_lbl.setStyleSheet("color:#aaa;")
+            return
+
+        # ── Checkpoint picker dialog ──────────────────────────────────
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Resume Pipeline — Select Checkpoint")
+        dlg.setMinimumWidth(520)
+        dlg.setMinimumHeight(320)
+        layout = QVBoxLayout(dlg)
+
+        lbl = QLabel("Select a checkpoint to resume from:")
+        lbl.setStyleSheet("color:#aaa; font-size:12px; padding-bottom:4px;")
+        layout.addWidget(lbl)
+
+        lst = QListWidget()
+        lst.setAlternatingRowColors(True)
+        for r in runs:
+            ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(r["timestamp"]))
+            name = r["project_name"] or r["run_id"]
+            label = f"{name}   ·   {r['step_count']} steps   ·   {ts}"
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, r["run_id"])
+            lst.addItem(item)
+        lst.setCurrentRow(0)
+        layout.addWidget(lst)
+
+        btns = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok |
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        layout.addWidget(btns)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        sel = lst.currentItem()
+        if not sel:
+            return
+        run_id = sel.data(Qt.ItemDataRole.UserRole)
+        self._do_resume(run_id)
+
+    def _do_resume(self, run_id: str):
+        prompt = self._prompt.toPlainText().strip()
+        images = self._image_bar.images()
+
+        self._steps.clear()
+        self._last_steps.clear()
+        self._detail.setVisible(False)
+        self._goal_lbl.setText("")
+        self._goal_lbl.setVisible(False)
+        self._progress.setValue(0)
+        self._progress.setVisible(True)
+        self._status_lbl.setText(f"Resuming {run_id}…")
+        self._status_lbl.setStyleSheet("color:#aaa; font-size:11px;")
+        self._run_btn.setEnabled(False)
+        self._resume_btn.setEnabled(False)
+        self._stop_btn.setEnabled(True)
+
+        orch = self._orchestrator
+        self._worker = AsyncWorker(
+            lambda: orch.resume(run_id, prompt=prompt, images=images))
+        self._worker.result_ready.connect(
+            lambda steps: self._on_pipeline_done({"total_steps": len(steps)}))
+        self._worker.error_raised.connect(
+            lambda e: self._on_pipeline_aborted({"reason": e, "phase": "resume"}))
+        self._worker.start()
+
     def _stop(self):
         if self._orchestrator:
             self._orchestrator.abort()
@@ -213,6 +296,7 @@ class AIChatPanel(QWidget):
 
     def _reset_buttons(self):
         self._run_btn.setEnabled(True)
+        self._resume_btn.setEnabled(True)
         self._stop_btn.setEnabled(False)
 
     # ------------------------------------------------------------------

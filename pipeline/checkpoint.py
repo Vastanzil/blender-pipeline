@@ -123,3 +123,32 @@ class Checkpoint:
                 **self.state.to_dict()}
         self._path.write_text(json.dumps(data, indent=2, ensure_ascii=False),
                               encoding="utf-8")
+
+    # ------------------------------------------------------------------
+    # Discovery
+
+    @classmethod
+    def list_runs(cls, output_dir: str = "") -> list[dict]:
+        """Return recent checkpoint records newest-first.
+
+        Each record: {run_id, project_name, timestamp, step_count, path}
+        """
+        base   = output_dir or get("output_dir", "") or str(Path.home() / "blender_pipeline_output")
+        ck_dir = Path(base) / "checkpoints"
+        if not ck_dir.exists():
+            return []
+        results = []
+        for f in sorted(ck_dir.glob("*.json"),
+                        key=lambda p: p.stat().st_mtime, reverse=True):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                results.append({
+                    "run_id":       data.get("run_id", f.stem),
+                    "project_name": data.get("project_name", ""),
+                    "timestamp":    data.get("timestamp", 0),
+                    "step_count":   len(data.get("steps", [])),
+                    "path":         str(f),
+                })
+            except Exception:
+                continue
+        return results[:50]   # cap at 50 entries
