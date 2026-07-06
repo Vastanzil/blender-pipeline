@@ -52,6 +52,7 @@ _KEEP = {
     "llama-common.dll",
     "ggml-base.dll",
     "ggml.dll",
+    "mtmd.dll",
     "libomp140.x86_64.dll",
 }
 
@@ -148,9 +149,13 @@ def step2_download_server(install_dir):
     server_dir  = install_dir / "server"
     server_exe  = server_dir / "llama-server.exe"
 
+    # Skip only when every required file is already present
     if server_exe.exists() and server_exe.stat().st_size > 1000:
-        _ok("llama-server.exe already present - skipping.")
-        return
+        missing = [f for f in _KEEP if not (server_dir / f).exists()]
+        if not missing:
+            _ok("llama-server binaries already present - skipping.")
+            return
+        _warn(f"Missing runtime files: {', '.join(missing)} - re-downloading.")
 
     # Fetch the latest release metadata
     print("  Looking up latest llama.cpp release ...")

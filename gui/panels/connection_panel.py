@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout,
     QLineEdit, QSpinBox, QDoubleSpinBox, QPushButton, QLabel,
     QGroupBox, QFrame, QFileDialog, QRadioButton, QButtonGroup,
-    QComboBox,
+    QComboBox, QScrollArea, QWidget,
 )
 from PyQt6.QtCore import Qt
 from config.registry import get, set as reg_set
@@ -17,12 +17,26 @@ class ConnectionPanel(QDialog):
         self.on_connect = on_connect
         self.on_saved   = on_saved
         self.setWindowTitle("BlenderCopilot — Connection Setup")
-        self.setMinimumWidth(560)
+        self.setMinimumWidth(580)
+        self.setMinimumHeight(500)
         self._build()
 
     def _build(self):
-        layout = QVBoxLayout(self)
+        # Outer layout: scroll area + fixed button bar at bottom
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Scrollable content pane
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setSpacing(10)
+        layout.setContentsMargins(12, 12, 12, 12)
+        scroll.setWidget(content)
+        outer.addWidget(scroll, 1)
 
         # ── Status label MUST be created FIRST ───────────────────────
         self.status = QLabel("")
@@ -211,22 +225,32 @@ class ConnectionPanel(QDialog):
         ps_form.addRow("RAG corpus dir:", rag_row)
 
         layout.addWidget(ps_group)
+        layout.addStretch()
 
-        # ── Status ────────────────────────────────────────────────────
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        layout.addWidget(sep)
-        layout.addWidget(self.status)   # created at top of _build()
+        # ── Fixed bottom bar (outside scroll area) ────────────────────
+        bottom = QFrame()
+        bottom.setFrameShape(QFrame.Shape.NoFrame)
+        bottom.setStyleSheet("border-top: 1px solid #2a2a2a; padding: 6px;")
+        bl = QVBoxLayout(bottom)
+        bl.setContentsMargins(12, 6, 12, 6)
+        bl.setSpacing(4)
+        bl.addWidget(self.status)   # created at top of _build()
 
-        # ── Buttons ──────────────────────────────────────────────────
         btn_row = QHBoxLayout()
         self.test_btn = QPushButton("Test Connection")
         self.save_btn = QPushButton("Save && Connect")
+        self.save_btn.setStyleSheet(
+            "QPushButton { background: #3a7bd5; color: #fff; "
+            "font-weight: bold; padding: 6px 20px; border-radius: 4px; }"
+            "QPushButton:hover { background: #4a8be5; }"
+        )
         self.test_btn.clicked.connect(self._test)
         self.save_btn.clicked.connect(self._save)
         btn_row.addWidget(self.test_btn)
+        btn_row.addStretch()
         btn_row.addWidget(self.save_btn)
-        layout.addLayout(btn_row)
+        bl.addLayout(btn_row)
+        outer.addWidget(bottom)
 
     # ------------------------------------------------------------------
     # Test / Save methods (simplified for Manifest-only)
