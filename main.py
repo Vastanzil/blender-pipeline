@@ -1,5 +1,5 @@
 """
-main.py — Entry point for Blender Pipeline Studio.
+main.py — Entry point for BlenderCopilot.
 
 Launch sequence
 ───────────────
@@ -7,7 +7,7 @@ Launch sequence
 2. Show StartupCheckDialog  (env checks + optional Blender ping)
    └─ all OK → "SYSTEM READY", auto-continues in 3 s
 3. First run only → ConnectionPanel (enter host/port, saved permanently)
-4. Show BlenderPipelineStudio main window
+4. Show BlenderCopilot main window
 
 Usage
 ─────
@@ -24,7 +24,7 @@ def main():
     from PyQt6.QtWidgets import QApplication
 
     app = QApplication(sys.argv)
-    app.setApplicationName("BlenderPipelineStudio")
+    app.setApplicationName("BlenderCopilot")
     app.setOrganizationName("VASTDEVLAB")
 
     # ── 1. Startup self-test ──────────────────────────────────────────────────
@@ -41,8 +41,8 @@ def main():
         ConnectionPanel().exec()
 
     # ── 3. Main window ────────────────────────────────────────────────────────
-    from gui.app import BlenderPipelineStudio
-    win = BlenderPipelineStudio()
+    from gui.app import BlenderCopilot
+    win = BlenderCopilot()
     win.show()
     sys.exit(app.exec())
 

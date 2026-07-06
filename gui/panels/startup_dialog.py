@@ -138,7 +138,7 @@ class StartupCheckDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Blender Pipeline Studio — System Check")
+        self.setWindowTitle("BlenderCopilot — System Check")
         self.setMinimumWidth(620)
         self.setMinimumHeight(520)
         self.setModal(True)

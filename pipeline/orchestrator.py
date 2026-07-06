@@ -184,6 +184,21 @@ class Orchestrator:
         self._emit("pipeline.plan", {"total": len(plan), "steps": plan})
         log.info(f"Plan: {len(plan)} steps")
 
+        # Populate visual_context per step for BlenderLLM (hybrid mode)
+        step_visual_contexts: list[str] = []
+        if images:
+            for desc in plan:
+                try:
+                    vc = self._ai.describe(
+                        f"{desc}\nDescribe visual/spatial requirements in 2-3 sentences. No code.",
+                        images=images,
+                    )
+                except Exception:
+                    vc = ""
+                step_visual_contexts.append(vc)
+        else:
+            step_visual_contexts = [""] * len(plan)
+
         # ── 6. Terrain Step 0 (injected before AI plan) ──────────────
         has_terrain = bool(terrain_features)
         if has_terrain:
@@ -211,6 +226,7 @@ class Orchestrator:
                        {"index": idx, "total": len(plan), "description": description})
             log.info(f"Step {idx+1}/{len(plan)}: {description}")
 
+            visual_ctx  = step_visual_contexts[idx] if idx < len(step_visual_contexts) else ""
             node_pos    = self._node_pos_for(description, spatial_nodes)
             rename_hint = (
                 f"\nName the created object '{description[:30]}' using "
@@ -231,7 +247,11 @@ class Orchestrator:
                        meta={"step": idx})
 
             try:
-                code = self._ai.generate_code(code_prompt, images=images)
+                code = self._ai.generate_code(
+                    code_prompt, images=images,
+                    skill_hint=None,
+                    visual_context=visual_ctx,
+                )
                 code = self._strip_fences(code)
             except Exception as e:
                 code = f"print('Code generation failed: {e}')"
@@ -241,7 +261,11 @@ class Orchestrator:
 
             obj_name = self._extract_obj_name(code, description)
 
-            result = self._retry.execute(code, ctx)
+            result = self._retry.execute(
+                code, ctx,
+                skill_hint=None,
+                visual_context=visual_ctx,
+            )
 
             step = PipelineStep(
                 index           = idx,
@@ -254,6 +278,7 @@ class Orchestrator:
                 bpy_object_name = obj_name,
                 spatial_pos     = node_pos or (),
                 poly_tris_target= self._poly.budget_for(description.split()[0].lower()),
+                visual_context  = visual_ctx,
             )
 
             # Layer A existence validation
@@ -269,9 +294,11 @@ class Orchestrator:
                         "Ensure bpy.context.view_layer.update() is called."
                     )
                     fix_code = self._strip_fences(
-                        self._ai.generate_code(fix_prompt, images=images)
+                        self._ai.generate_code(fix_prompt, images=images,
+                                               visual_context=visual_ctx)
                     )
-                    fix_result = self._retry.execute(fix_code, ctx)
+                    fix_result = self._retry.execute(fix_code, ctx,
+                                                     visual_context=visual_ctx)
                     if fix_result.success:
                         step.code     = fix_result.code
                         step.success  = True

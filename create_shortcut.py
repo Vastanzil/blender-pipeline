@@ -2,7 +2,7 @@
 create_shortcut.py
 ==================
 Run once:  python create_shortcut.py
-Creates a desktop shortcut that launches Blender Pipeline Studio
+Creates a desktop shortcut that launches BlenderCopilot
 with NO terminal window.
 
 Requires pywin32:  pip install pywin32
@@ -26,7 +26,7 @@ def main():
     pythonw      = Path(sys.executable).parent / "pythonw.exe"
     launcher     = project_dir / "launch.pyw"
     desktop      = Path.home() / "Desktop"
-    shortcut_path = desktop / "Blender Pipeline Studio.lnk"
+    shortcut_path = desktop / "BlenderCopilot.lnk"
 
     if not pythonw.exists():
         # Fallback: same dir as python.exe but named pythonw
@@ -41,7 +41,7 @@ def main():
     shortcut.TargetPath       = str(pythonw)
     shortcut.Arguments        = f'"{launcher}"'
     shortcut.WorkingDirectory = str(project_dir)
-    shortcut.Description      = "Blender Pipeline Studio — AI-powered Blender GUI"
+    shortcut.Description      = "BlenderCopilot — AI-powered Blender GUI"
 
     # Try to use the project icon if it exists, else fall back to pythonw icon
     icon_candidates = [
@@ -62,7 +62,7 @@ def main():
     print(f"  Arguments: \"{launcher}\"")
     print(f"  WorkDir  : {project_dir}")
     print()
-    print("Double-click 'Blender Pipeline Studio' on your Desktop to launch.")
+    print("Double-click 'BlenderCopilot' on your Desktop to launch.")
 
 
 if __name__ == "__main__":

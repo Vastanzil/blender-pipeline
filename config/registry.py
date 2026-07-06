@@ -2,9 +2,9 @@
 config/registry.py
 Cross-platform config persistence.
 
-  Windows  → %APPDATA%\\BlenderPipelineStudio\\config.json
-  Linux    → ~/.config/BlenderPipelineStudio/config.json
-  macOS    → ~/Library/Application Support/BlenderPipelineStudio/config.json
+  Windows  → %APPDATA%\\BlenderCopilot\\config.json
+  Linux    → ~/.config/BlenderCopilot/config.json
+  macOS    → ~/Library/Application Support/BlenderCopilot/config.json
 
 First run: file doesn't exist — DEFAULTS are returned transparently.
 save_config() creates the directory automatically.
@@ -20,7 +20,8 @@ from typing import Any
 
 from .defaults import DEFAULTS
 
-APP_NAME = "BlenderPipelineStudio"
+APP_NAME = "BlenderCopilot"
+_OLD_APP_NAME = "BlenderPipelineStudio"
 
 # In-memory cache — populated on first load_config() call.
 # set() writes through to disk and updates cache.
@@ -42,10 +43,36 @@ def _config_path() -> Path:
     return base / "config.json"
 
 
+def _migrate_config() -> None:
+    """Copy BlenderPipelineStudio config to BlenderCopilot path on first launch."""
+    new_path = _config_path()
+    if new_path.exists():
+        return
+    try:
+        from platformdirs import user_config_dir
+        old_base = Path(user_config_dir(_OLD_APP_NAME))
+    except ImportError:
+        if sys.platform == "win32":
+            old_base = Path.home() / "AppData" / "Roaming" / _OLD_APP_NAME
+        elif sys.platform == "darwin":
+            old_base = Path.home() / "Library" / "Application Support" / _OLD_APP_NAME
+        else:
+            old_base = Path.home() / ".config" / _OLD_APP_NAME
+    old_path = old_base / "config.json"
+    if old_path.exists():
+        import shutil
+        import logging
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(old_path, new_path)
+        logging.getLogger(__name__).info(
+            "Config migrated from %s to %s", old_path, new_path)
+
+
 def load_config() -> dict:
     global _cache
     if _cache is not None:
         return _cache
+    _migrate_config()
     p = _config_path()
     disk: dict = {}
     if p.exists():

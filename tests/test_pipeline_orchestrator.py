@@ -36,7 +36,8 @@ class MockAI:
     def describe(self, prompt, images=None):
         return "Mock goal description."
 
-    def fix_error(self, code, error, context=""):
+    def fix_error(self, code, error, context="", skill_hint=None,
+                  visual_context="", force_manifest=False):
         return code + "\n# fixed"
 
     def available_backends(self):
@@ -87,7 +88,7 @@ def test_orchestrator_abort(tmp_path, monkeypatch):
         def __init__(self, orch_ref):
             self._ref = orch_ref
             self._n   = 0
-        def generate_code(self, prompt, images=None):
+        def generate_code(self, prompt, images=None, skill_hint=None, visual_context=""):
             self._n += 1
             if self._n >= 2:
                 self._ref.abort()

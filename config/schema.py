@@ -5,7 +5,7 @@ Uses dataclass + manual type coercion (stdlib only).
 """
 from dataclasses import dataclass
 
-_VALID_BACKENDS = {"manifest"}
+_VALID_BACKENDS = {"manifest", "blenderllm"}
 _VALID_MODES    = {"auto", "mcpo", "direct"}
 
 
@@ -16,13 +16,18 @@ class AppConfig:
     mcp_port:          int   = 8000
     connection_mode:   str   = "auto"       # "auto" | "mcpo" | "direct"
 
-    # AI backend (Manifest only)
+    # AI backend (Manifest only, or Hybrid with BlenderLLM)
     ai_backend:        str   = "manifest"
 
     # Manifest AI router
     manifest_host:     str   = "http://localhost:2099"
     manifest_token:    str   = ""
     manifest_model:    str   = "auto"
+
+    # Hybrid mode — BlenderLLM for codegen/fix, Claude for planning/vision
+    hybrid_mode:           bool  = False
+    blenderllm_server_url: str   = ""
+    blenderllm_timeout:    int   = 180
 
     # Pipeline behaviour
     max_retries:       int   = 5
@@ -41,6 +46,9 @@ class AppConfig:
     stream_ai:         bool  = True
     log_level:         str   = "INFO"
 
+    # Scene verification
+    capture_wireframe: bool  = True
+
 
 def validate_config(raw: dict) -> tuple:
     """
@@ -50,9 +58,9 @@ def validate_config(raw: dict) -> tuple:
     warnings: list = []
     cfg = AppConfig()
 
-    int_fields   = {"mcp_port", "max_retries", "ai_timeout"}
+    int_fields   = {"mcp_port", "max_retries", "ai_timeout", "blenderllm_timeout"}
     float_fields = {"poll_interval"}
-    bool_fields  = {"auto_connect", "stream_ai"}
+    bool_fields  = {"auto_connect", "stream_ai", "hybrid_mode", "capture_wireframe"}
 
     for key, val in raw.items():
         if not hasattr(cfg, key):

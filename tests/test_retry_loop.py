@@ -17,7 +17,8 @@ class MockAI:
     def __init__(self, fix="# fixed"):
         self._fix = fix
 
-    def fix_error(self, code, error, context=""):
+    def fix_error(self, code, error, context="", skill_hint=None,
+                  visual_context="", force_manifest=False):
         return code + "\n" + self._fix
 
 

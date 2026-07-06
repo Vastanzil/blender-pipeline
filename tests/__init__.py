@@ -1,1 +1,1 @@
-"""Test suite for Blender Pipeline Studio."""
+"""Test suite for BlenderCopilot."""

@@ -1,4 +1,4 @@
-"""Default configuration values for Blender Pipeline Studio."""
+"""Default configuration values for BlenderCopilot."""
 
 DEFAULTS = {
     "mcp_host":        "localhost",
@@ -19,6 +19,10 @@ DEFAULTS = {
     "auto_connect":      True,
     "stream_ai":         True,
     "log_level":         "INFO",
-    "ref_loop_max_iter": 3,
-    "ref_loop_threshold": 75,
+    "ref_loop_max_iter":   3,
+    "ref_loop_threshold":  75,
+    "hybrid_mode":           False,
+    "blenderllm_server_url": "",
+    "blenderllm_timeout":    180,
+    "capture_wireframe":     True,
 }

@@ -2,6 +2,7 @@
 pipeline/scene_verifier.py
 Multi-angle 256x256 viewport screenshots + one AI realism call.
 No extra tokens per step — single batch call after pipeline.done.
+Supports optional wireframe pass for depth/occlusion disambiguation.
 """
 from __future__ import annotations
 import json
@@ -70,10 +71,46 @@ print('VERIFY_PATHS:' + ','.join(_paths))
 """
 
 
+_WIREFRAME_CODE = """
+import bpy, os
+_out_dir     = {out_dir!r}
+_name        = {name!r}
+_fp          = os.path.join(_out_dir, f'verify_wire_{{_name}}.png')
+_scene       = bpy.context.scene
+_orig_engine = _scene.render.engine
+_orig_shade  = None
+try:
+    _scene.render.engine = 'BLENDER_WORKBENCH'
+    for _area in bpy.context.screen.areas:
+        if _area.type == 'VIEW_3D':
+            _orig_shade = _area.spaces[0].shading.type
+            _area.spaces[0].shading.type = 'WIREFRAME'
+            break
+    _scene.render.filepath = _fp
+    bpy.ops.render.opengl(write_still=True)
+finally:
+    _scene.render.engine = _orig_engine
+    if _orig_shade is not None:
+        for _area in bpy.context.screen.areas:
+            if _area.type == 'VIEW_3D':
+                _area.spaces[0].shading.type = _orig_shade
+                break
+print('WIRE_PATH:' + _fp)
+"""
+
+
 class SceneVerifier:
 
     def capture_all(self, client, output_dir: str | Path) -> list[str]:
-        """Render 4 screenshots; return list of PNG paths."""
+        """Render solid + optional wireframe screenshots per angle.
+
+        Returns a flat list. When capture_wireframe is enabled:
+          [solid_front, wire_front, solid_side, wire_side, ...]
+        Otherwise just the 4 solid captures.
+        """
+        from config.registry import get as _get
+        do_wire = _get("capture_wireframe", True)
+
         out = str(Path(output_dir).expanduser())
         code = _CAPTURE_CODE.format(
             out_dir=out,
@@ -83,10 +120,32 @@ class SceneVerifier:
         if not result.success:
             return []
 
+        solid_paths: list[str] = []
         for line in (result.output or "").splitlines():
             if line.startswith("VERIFY_PATHS:"):
-                return [p for p in line[len("VERIFY_PATHS:"):].split(",") if p]
-        return []
+                solid_paths = [p for p in line[len("VERIFY_PATHS:"):].split(",") if p]
+                break
+
+        if not solid_paths or not do_wire:
+            return solid_paths
+
+        # Interleave wireframe captures: solid_N, wire_N, ...
+        combined: list[str] = []
+        for solid_path, (name, _, _) in zip(solid_paths, CAMERA_ANGLES):
+            combined.append(solid_path)
+            wire_code = _WIREFRAME_CODE.format(out_dir=out, name=name)
+            wire_result = client.exec_code(wire_code)
+            wire_path: str | None = None
+            if wire_result.success:
+                for line in (wire_result.output or "").splitlines():
+                    if line.startswith("WIRE_PATH:"):
+                        wire_path = line[len("WIRE_PATH:"):].strip()
+                        break
+            if wire_path:
+                combined.append(wire_path)
+            else:
+                combined.append(solid_path)   # fallback: duplicate solid
+        return combined
 
     def verify_realism(self, ai, screenshot_paths: list[str],
                        spatial_nodes: list,
@@ -101,10 +160,19 @@ class SceneVerifier:
             layout_lines.append(f"  {n.label}: ({x}, {y}, {z})")
         layout = "\n".join(layout_lines) or "  (no spatial layout)"
 
+        has_wireframe = len(screenshot_paths) > 4
+        wire_note = (
+            "\nWireframe images are interleaved after each solid-shaded image "
+            "(solid_front, wire_front, solid_side, wire_side, ...).\n"
+            "Use the wireframe images to disambiguate depth relationships and occlusion.\n"
+        ) if has_wireframe else ""
+
         prompt = (
             f"Project: {project_name}\n"
             f"Expected object layout:\n{layout}\n\n"
-            "You are given 4 Blender viewport screenshots (front, side, top, isometric).\n"
+            f"You are given {'8' if has_wireframe else '4'} Blender viewport screenshots "
+            f"({'solid + wireframe interleaved' if has_wireframe else 'front, side, top, isometric'}).\n"
+            f"{wire_note}"
             "Analyse the scene and return ONLY valid JSON in this exact format:\n"
             '{"issues": [{"type": "merged|missing|floating|sunk", '
             '"objects": ["name1", "name2"], "fix_hint": "..."}]}\n\n'

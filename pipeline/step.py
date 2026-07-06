@@ -17,6 +17,7 @@ class PipelineStep:
     spatial_pos:      tuple = ()
     bpy_object_name:  str   = ""
     screenshot_paths: list  = field(default_factory=list)
+    visual_context:   str   = ""   # textual description for BlenderLLM (no image input)
 
     def summary(self) -> str:
         status = "OK" if self.success else "FAIL"

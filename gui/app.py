@@ -38,10 +38,10 @@ from realtime.qt_bridge import QtBridge
 log = get_logger("app")
 
 
-class BlenderPipelineStudio(QMainWindow):
+class BlenderCopilot(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Blender Pipeline Studio")
+        self.setWindowTitle("BlenderCopilot")
         self.resize(1600, 960)
         self.setMinimumSize(1000, 600)
 
@@ -310,8 +310,8 @@ class BlenderPipelineStudio(QMainWindow):
         self._apply_theme()
 
     def _show_about(self):
-        QMessageBox.about(self, "About Blender Pipeline Studio",
-            "<b>Blender Pipeline Studio</b><br>"
+        QMessageBox.about(self, "About BlenderCopilot",
+            "<b>BlenderCopilot</b><br>"
             "Full-authority Blender control via blender-mcp<br><br>"
             "Geometry Nodes · Materials · Animation · Physics · Rendering<br>"
             "AI Backends: Ollama · OpenAI · Anthropic · Gemini<br>"
@@ -355,8 +355,8 @@ class BlenderPipelineStudio(QMainWindow):
 
 def launch():
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setApplicationName("BlenderPipelineStudio")
+    app.setApplicationName("BlenderCopilot")
     app.setOrganizationName("VASTDEVLAB")
-    win = BlenderPipelineStudio()
+    win = BlenderCopilot()
     win.show()
     sys.exit(app.exec())

@@ -1,5 +1,5 @@
 """
-launch.pyw — double-click launcher for Blender Pipeline Studio.
+launch.pyw — double-click launcher for BlenderCopilot.
 Uses pythonw.exe so NO terminal window appears.
 Place this file in the project root and double-click it.
 """

@@ -1,5 +1,5 @@
 """
-conftest.py — pytest configuration for Blender Pipeline Studio tests.
+conftest.py — pytest configuration for BlenderCopilot tests.
 Adds the project root to sys.path so all imports work without installing.
 """
 import sys

@@ -21,8 +21,11 @@ class RetryLoop:
         self._ai          = ai
         self._max_retries = max_retries
 
-    def execute(self, code: str, context: str = "") -> ExecutionResult:
+    def execute(self, code: str, context: str = "",
+                skill_hint: str | None = None,
+                visual_context: str = "") -> ExecutionResult:
         current_code = code
+        blenderllm_failures = 0
         for attempt in range(1, self._max_retries + 1):
             result = self._client.exec_code(current_code)
             output = str(result.output or "")
@@ -44,14 +47,35 @@ class RetryLoop:
 
             if attempt < self._max_retries:
                 err_msg = error or output
+                # Escalate to Manifest after 2 consecutive BlenderLLM failures
+                force_manifest = blenderllm_failures >= 2
                 try:
-                    current_code = self._ai.fix_error(current_code, err_msg, context)
+                    fixed = self._ai.fix_error(
+                        current_code, err_msg, context,
+                        skill_hint=skill_hint,
+                        visual_context=visual_context,
+                        force_manifest=force_manifest,
+                    )
+                    # Track whether BlenderLLM was the backend used
+                    import logging
+                    _log = logging.getLogger(__name__)
+                    if not force_manifest and getattr(self._ai, '_blenderllm', None):
+                        from config.registry import get as _get
+                        if _get("hybrid_mode", False):
+                            blenderllm_failures += 1
+                        else:
+                            blenderllm_failures = 0
+                    else:
+                        blenderllm_failures = 0
+
                     # Strip markdown code fences if AI wraps in them
-                    if "```" in current_code:
+                    if "```" in fixed:
                         import re
-                        m = re.search(r'```(?:python)?\n?(.*?)```', current_code, re.DOTALL)
+                        m = re.search(r'```(?:python)?\n?(.*?)```', fixed, re.DOTALL)
                         if m:
-                            current_code = m.group(1).strip()
+                            fixed = m.group(1).strip()
+                    if fixed:
+                        current_code = fixed
                 except Exception:
                     pass  # keep current code and retry anyway
 

@@ -1,7 +1,7 @@
 """
 Connection + AI backend setup dialog.
 
-Manifest-only configuration for Blender Pipeline Studio.
+Manifest-only configuration for BlenderCopilot.
 """
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout,
@@ -17,7 +17,7 @@ class ConnectionPanel(QDialog):
         super().__init__(parent)
         self.on_connect = on_connect
         self.on_saved   = on_saved
-        self.setWindowTitle("Blender Pipeline Studio — Connection Setup")
+        self.setWindowTitle("BlenderCopilot — Connection Setup")
         self.setMinimumWidth(560)
         self._build()
 
@@ -32,7 +32,7 @@ class ConnectionPanel(QDialog):
         self.status.setMinimumHeight(32)
 
         # Header
-        title = QLabel("Blender Pipeline Studio — Setup")
+        title = QLabel("BlenderCopilot — Setup")
         title.setStyleSheet("font-size:16px; font-weight:bold; color:#3a7bd5;")
         layout.addWidget(title)
 

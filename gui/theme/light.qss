@@ -1,4 +1,4 @@
-/* Blender Pipeline Studio — Light Theme */
+/* BlenderCopilot — Light Theme */
 QMainWindow, QWidget {
     background-color: #f5f5f5;
     color: #222;

@@ -25,7 +25,10 @@ def test_capture_returns_empty_on_client_failure():
     assert paths == []
 
 
-def test_capture_parses_output_paths():
+def test_capture_parses_output_paths(monkeypatch):
+    monkeypatch.setattr("config.registry.get",
+                        lambda key, default=None: False if key == "capture_wireframe" else default)
+
     class OKClient:
         def exec_code(self, code):
             from mcp.models import ToolResult
