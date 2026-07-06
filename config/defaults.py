@@ -16,7 +16,9 @@ DEFAULTS = {
     "theme":           "dark",
     "window_geometry": "1600x900",
     "last_prompt":     "",
-    "auto_connect":    True,
-    "stream_ai":       True,
-    "log_level":       "INFO",
+    "auto_connect":      True,
+    "stream_ai":         True,
+    "log_level":         "INFO",
+    "ref_loop_max_iter": 3,
+    "ref_loop_threshold": 75,
 }

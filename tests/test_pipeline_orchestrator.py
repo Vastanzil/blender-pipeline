@@ -33,6 +33,9 @@ class MockAI:
     def generate_code(self, prompt, images=None):
         return "import bpy\nprint('step done')"
 
+    def describe(self, prompt, images=None):
+        return "Mock goal description."
+
     def fix_error(self, code, error, context=""):
         return code + "\n# fixed"
 

@@ -3,21 +3,25 @@ ai/manifest_client.py
 Manifest AI router client (http://localhost:2099).
 
 Modified for v3.0 to support image reference upload and vision input.
+Modified for v3.2: plan() uses numbered list (no JSON), describe() added,
+_chat() has exponential backoff on 500/502/503 errors.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
+import time
 import requests
 
-# NEW: encode image file paths to base64 for OpenAI-like vision input
+
 def _encode_image(path: str) -> tuple[str, str]:
     """Return (base64_data, mime_type) for vision URL encoding."""
     import base64, mimetypes
     data = open(path, "rb").read()
     mime = mimetypes.guess_type(path)[0] or "image/png"
     return base64.b64encode(data).decode(), mime
+
 
 class ManifestClient:
     def __init__(self, host: str = "http://localhost:2099",
@@ -58,20 +62,28 @@ class ManifestClient:
     def _chat(self, messages: list, images: list[str] | None = None) -> str:
         if messages and images:
             messages[-1] = {**messages[-1], "content": self._build_content(messages[-1]["content"], images)}
-
         payload = {"model": self.model, "messages": messages}
-        r = requests.post(
-            f"{self.host}/v1/chat/completions",
-            headers=self._headers(),
-            json=payload,
-            timeout=self.timeout,
-        )
-        r.raise_for_status()
-        data = r.json()
-        return data["choices"][0]["message"]["content"]
+        last_err = None
+        for attempt in range(3):
+            try:
+                r = requests.post(
+                    f"{self.host}/v1/chat/completions",
+                    headers=self._headers(),
+                    json=payload,
+                    timeout=self.timeout,
+                )
+                r.raise_for_status()
+                return r.json()["choices"][0]["message"]["content"]
+            except requests.HTTPError as e:
+                if e.response is not None and e.response.status_code in (500, 502, 503):
+                    last_err = e
+                    time.sleep(2 ** attempt)   # 1s, 2s, 4s
+                    continue
+                raise
+        raise last_err
 
     # ------------------------------------------------------------------
-    # Public interface (updated signatures to accept images=None)
+    # Public interface
     # ------------------------------------------------------------------
 
     def generate_code(self, prompt: str, images: list[str] | None = None) -> str:
@@ -92,23 +104,52 @@ class ManifestClient:
                 "role":    "system",
                 "content": (
                     "You are a Blender pipeline planner. "
-                    "Return a JSON array of step description strings only. "
-                    "Example: [\"Create base mesh\", \"Add material\", \"Set lighting\"]"
+                    "Return ONLY a numbered list of steps, one per line, 10-15 steps max. "
+                    "No JSON, no code blocks, no extra text. "
+                    "Example:\n1. Create base mesh\n2. Add material\n3. Set lighting"
                 ),
             },
             {"role": "user", "content": self._build_content(prompt, images)},
         ])
-        # Try to extract a JSON array
-        m = re.search(r'\[.*?\]', resp, re.DOTALL)
+        # Primary: numbered list — no JSON parsing, no fence stripping needed
+        lines = [
+            re.sub(r'^\d+[.)]\s*', '', l).strip()
+            for l in resp.splitlines()
+            if re.match(r'^\d+[.)]', l.strip())
+        ]
+        if lines:
+            return lines
+        # Fallback: greedy JSON array search (greedy .* not .*? avoids truncation on ] in text)
+        m = re.search(r'\[.*\]', resp, re.DOTALL)
         if m:
             try:
-                return json.loads(m.group(0))
+                result = json.loads(m.group(0))
+                if isinstance(result, list):
+                    return [str(s) for s in result]
             except json.JSONDecodeError:
                 pass
-        # Fallback: split by lines
-        lines = [l.strip().lstrip("-•*0123456789.) ").strip()
-                 for l in resp.splitlines() if l.strip()]
-        return [l for l in lines if l]
+        # Last resort: strip markdown fences and parse whole response as JSON
+        clean = re.sub(r'^```(?:json)?\s*|\s*```$', '', resp.strip(),
+                       flags=re.IGNORECASE | re.MULTILINE)
+        try:
+            result = json.loads(clean)
+            if isinstance(result, list):
+                return [str(s) for s in result]
+        except json.JSONDecodeError:
+            pass
+        # Plain line split — skip fence lines, return whatever is left
+        return [l.strip() for l in resp.splitlines()
+                if l.strip() and not l.strip().startswith('`')]
+
+    def describe(self, prompt: str, images: list[str] | None = None) -> str:
+        """Return a short plain-text description — no code, no JSON."""
+        return self._chat([
+            {
+                "role":    "system",
+                "content": "Describe the task in 1-3 sentences. No code.",
+            },
+            {"role": "user", "content": self._build_content(prompt, images)},
+        ])
 
     def fix_error(self, code: str, error: str, context: str = "", images: list[str] | None = None) -> str:
         return self._chat([
@@ -136,7 +177,6 @@ class ManifestClient:
             )
             return r.status_code == 200
         except Exception:
-            # Fallback: try root health endpoint
             try:
                 r = requests.get(f"{self.host}/", timeout=3)
                 return r.status_code < 500

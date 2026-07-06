@@ -2,6 +2,8 @@
 pipeline/orchestrator.py
 Full v3.1 pipeline: unlimited steps, spatial reasoning, terrain, poly budget,
 logging, checkpoint resume, existence validation, and realism verification.
+v3.2: plan uses numbered list, goal uses describe(), _STOPWORDS filter,
+reference-guided iterative refinement loop added.
 """
 from __future__ import annotations
 import re
@@ -19,6 +21,7 @@ from .pipeline_logger import PipelineLogger
 from .project_namer   import ProjectNamer
 from .terrain_builder import TerrainBuilder, TerrainFeature, TERRAIN_KEYWORDS
 from .scene_verifier  import SceneVerifier
+from .reference_loop  import ReferenceLoop
 from ai.context_builder import ContextBuilder
 from config.registry    import get
 from utils.logger       import get_logger
@@ -30,6 +33,20 @@ _TERRAIN_FEATURE_MAP = {
     "road": TerrainFeature.ROAD, "path":   TerrainFeature.ROAD,
     "pond": TerrainFeature.POND, "lake":   TerrainFeature.POND,
     "river": TerrainFeature.RIVER, "stream": TerrainFeature.RIVER,
+}
+
+# Words that must never become spatial nodes — common English fluff, Python/bpy
+# keywords that bleed in when goal_summary contains code, and Blender jargon.
+_STOPWORDS = {
+    "the", "and", "for", "with", "from", "that", "this", "are", "has", "have",
+    "will", "use", "using", "make", "create", "add", "set", "get", "all", "any",
+    "not", "you", "your", "its", "can", "may", "but", "yet", "its", "also",
+    "stylized", "detailed", "beautiful", "realistic", "simple", "new",
+    "render", "rendering", "scene", "object", "objects", "model", "models",
+    "blender", "given", "provided", "sample", "reference", "image",
+    "understand", "information", "request", "describe", "briefly",
+    "bpy", "import", "context", "data", "ops", "types", "mesh", "edit",
+    "mode", "material", "node", "nodes", "engine", "cycles", "eevee",
 }
 
 
@@ -83,7 +100,7 @@ class Orchestrator:
                 "spatial_nodes":   [{"label": n.label, "world_pos": list(n.world_pos)}
                                     for n in spatial_nodes],
                 "completed_steps": list(completed_steps),
-                "scene_objects":   [],   # populated lazily
+                "scene_objects":   [],
                 "validation_state": "ok",
             }
 
@@ -98,13 +115,13 @@ class Orchestrator:
             ctx = ""
             log.warning(f"Context build failed: {e}")
 
-        # ── 2. Goal analysis ──────────────────────────────────────────
+        # ── 2. Goal analysis (describe, not generate_code) ────────────
         try:
             goal_prompt = (
                 f"Briefly describe in 1-3 sentences what Blender actions you will "
                 f"perform for this request. Do NOT write code yet.\n\nRequest: {prompt}"
             )
-            goal_summary = self._ai.generate_code(goal_prompt, images=images)
+            goal_summary = self._ai.describe(goal_prompt, images=images)
             goal_summary = goal_summary[:300]
             self._emit("pipeline.goal_analysis", {"summary": goal_summary})
             logger.log("goal", "response", goal_summary)
@@ -132,21 +149,18 @@ class Orchestrator:
         self._emit("pipeline.project_named", {"name": project_name})
         logger.log("project_name", "system", project_name)
 
-        # ── 5. Plan ───────────────────────────────────────────────────
+        # ── 5. Plan (10-15 compound steps, numbered list format) ──────
         skill_section = f"\nSKILL HINTS: {skill_hint}\n" if skill_hint else ""
         plan_prompt = (
             f"{ctx}{skill_section}\n\n"
             f"{spatial_block}\n\n"
             f"USER REQUEST: {prompt}\n\n"
-            "Return a JSON array of short step descriptions.\n"
-            "Each step must be ONE atomic bpy operation.\n"
-            "Plan as many steps as needed — there is NO step limit.\n"
-            "Use human-like reasoning:\n"
-            "- Structural components attach TO their parent object\n"
-            "- Independent objects maintain at least 0.75m separation\n"
-            "- Never merge geometrically distinct objects (tree != house)\n"
-            "- Name every object descriptively (e.g. 'Cabin_Wall_North')\n"
-            "- Include polish steps last: UV unwrap, smooth shading, materials, lighting"
+            "Return a NUMBERED LIST of 10-15 compound steps to build this scene in Blender.\n"
+            "Each step should accomplish a meaningful chunk of work, not a single property.\n"
+            "Good: '1. Build island base: cylinder r=5m, mossy top material, rock underside'\n"
+            "Bad:  '1. Set roughness to 0.7'\n"
+            "One step per line: '1. Step description', '2. Step description', etc.\n"
+            "No JSON. No code blocks."
         )
         logger.log("plan", "prompt", plan_prompt[:500])
         try:
@@ -168,7 +182,7 @@ class Orchestrator:
                                  [{"label": n.label, "world_pos": list(n.world_pos)}
                                   for n in spatial_nodes])
         self._emit("pipeline.plan", {"total": len(plan), "steps": plan})
-        log.info(f"Plan: {len(plan)} steps (no cap)")
+        log.info(f"Plan: {len(plan)} steps")
 
         # ── 6. Terrain Step 0 (injected before AI plan) ──────────────
         has_terrain = bool(terrain_features)
@@ -186,7 +200,7 @@ class Orchestrator:
 
         steps: list[PipelineStep] = []
 
-        # ── 7. Execute steps (unlimited) ─────────────────────────────
+        # ── 7. Execute steps ──────────────────────────────────────────
         for idx, description in enumerate(plan):
             if self._abort_flag:
                 log.info("Pipeline aborted by user")
@@ -197,7 +211,6 @@ class Orchestrator:
                        {"index": idx, "total": len(plan), "description": description})
             log.info(f"Step {idx+1}/{len(plan)}: {description}")
 
-            # Determine spatial position for this step's object
             node_pos    = self._node_pos_for(description, spatial_nodes)
             rename_hint = (
                 f"\nName the created object '{description[:30]}' using "
@@ -226,7 +239,6 @@ class Orchestrator:
 
             logger.log("codegen", "response", code[:400], meta={"step": idx})
 
-            # Extract bpy_object_name from generated code
             obj_name = self._extract_obj_name(code, description)
 
             result = self._retry.execute(code, ctx)
@@ -249,7 +261,6 @@ class Orchestrator:
                 passed, reason = self._validator.validate_step_result(step)
                 if not passed:
                     log.warning(f"Validation fail step {idx+1}: {reason}")
-                    # Retry with existence hint
                     fix_prompt = (
                         f"{ctx}\n\nThe following code ran without error but the object "
                         f"'{obj_name}' was not visible in the scene:\n\n{code}\n\n"
@@ -341,7 +352,22 @@ class Orchestrator:
         except Exception as e:
             log.warning(f"Scene verification failed: {e}")
 
-        # ── 9. Auto-save .blend ────────────────────────────────────────
+        # ── 9. Reference-guided refinement loop ───────────────────────
+        if images:
+            try:
+                ref_loop = ReferenceLoop(
+                    self._client, self._ai,
+                    max_iterations=int(get("ref_loop_max_iter", 3)),
+                    score_threshold=int(get("ref_loop_threshold", 75)),
+                )
+                loop_results = ref_loop.run(images, output_dir, project_name, ctx)
+                self._emit("pipeline.reference_loop_done", {"iterations": loop_results})
+                logger.log("reference_loop", "response", str(loop_results))
+                log.info(f"Reference loop: {len(loop_results)} iteration(s)")
+            except Exception as e:
+                log.warning(f"Reference loop failed: {e}")
+
+        # ── 10. Auto-save .blend ───────────────────────────────────────
         try:
             blend_path = (Path(output_dir).expanduser()
                           / f"{project_name}.blend")
@@ -384,7 +410,6 @@ class Orchestrator:
         resume_ctx = checkpoint.load_resume_context(logger)
         log.info(f"Resuming {run_id} — completed stages: "
                  f"{resume_ctx.get('completed_stages', [])}")
-        # Re-run from next incomplete stage
         return self.run(
             prompt or resume_ctx.get("goal", "resume"),
             images=images,
@@ -395,18 +420,18 @@ class Orchestrator:
 
     @staticmethod
     def _detect_objects(prompt: str, goal: str) -> list[DetectedObject]:
-        """Rough keyword extraction from prompt + goal to seed spatial layout."""
+        """Keyword extraction from prompt + goal to seed spatial layout."""
         combined = (prompt + " " + goal).lower()
         tokens   = re.findall(r"[a-z]+", combined)
         seen: set[str] = set()
         result: list[DetectedObject] = []
         for tok in tokens:
-            if tok in seen or len(tok) < 3:
+            if tok in seen or len(tok) < 4 or tok in _STOPWORDS:
                 continue
             seen.add(tok)
             scale = 2.0 if tok in TERRAIN_KEYWORDS else 1.0
             result.append(DetectedObject(label=tok, estimated_scale=scale))
-        return result[:20]   # cap at 20 to avoid noise
+        return result[:20]
 
     @staticmethod
     def _node_pos_for(description: str,
@@ -431,6 +456,5 @@ class Orchestrator:
         m = re.search(r"""bpy\.context\.object\.name\s*=\s*['"]([^'"]+)['"]""", code)
         if m:
             return m.group(1)
-        # Fallback: use the first word of description as slug
         slug = re.sub(r"[^a-zA-Z0-9_]", "_", description[:20]).strip("_")
         return slug if slug else "Object"
