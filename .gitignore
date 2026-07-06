@@ -42,6 +42,9 @@ blender_pipeline_output/
 Thumbs.db
 desktop.ini
 
+# BlenderLLM local install (model + server binaries — too large for git)
+blenderllm/
+
 # pytest
 .pytest_cache/
 .coverage

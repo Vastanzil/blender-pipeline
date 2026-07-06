@@ -23,13 +23,33 @@ from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QProgressBar, QFrame, QSizePolicy
 )
 from PyQt6.QtCore    import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui     import QFont, QColor
 
 from utils.startup_check import (
-    run_environment_checks, check_blender_connection,
+    check_blender_connection,
     StartupReport, CheckResult,
 )
 from config.registry import get
+
+
+def _check_blenderllm() -> CheckResult:
+    """Health-check the local BlenderLLM server (non-blocking, 5 s timeout)."""
+    import time
+    t0  = time.time()
+    url = get("blenderllm_server_url", "http://127.0.0.1:8080")
+    try:
+        from ai.blenderllm_client import BlenderLLMClient
+        ok = BlenderLLMClient(url, timeout=5).health()
+    except Exception:
+        ok = False
+    elapsed = time.time() - t0
+    from pathlib import Path
+    bat = Path(get("blenderllm_home", "")) / "start_blenderllm.bat"
+    msg = (
+        f"OK  ({url})"
+        if ok else
+        f"Not responding at {url} — run {bat}"
+    )
+    return CheckResult(name="BlenderLLM server", ok=ok, message=msg, elapsed=elapsed)
 
 
 # ── Worker thread ──────────────────────────────────────────────────────────────
@@ -38,12 +58,14 @@ class CheckWorker(QThread):
     check_done   = pyqtSignal(object)   # CheckResult
     all_done     = pyqtSignal(object)   # StartupReport
     blender_done = pyqtSignal(object)   # CheckResult
+    blm_done     = pyqtSignal(object)   # CheckResult
 
-    def __init__(self, host: str, port: int, ping_blender: bool):
+    def __init__(self, host: str, port: int, ping_blender: bool, ping_blm: bool):
         super().__init__()
         self._host        = host
         self._port        = port
         self._ping_blender = ping_blender
+        self._ping_blm     = ping_blm
 
     def run(self):
         from utils.startup_check import ENVIRONMENT_CHECKS
@@ -58,6 +80,9 @@ class CheckWorker(QThread):
         if self._ping_blender and self._host:
             r = check_blender_connection(self._host, self._port)
             self.blender_done.emit(r)
+
+        if self._ping_blm:
+            self.blm_done.emit(_check_blenderllm())
 
 
 # ── Check row widget ───────────────────────────────────────────────────────────
@@ -263,27 +288,34 @@ class StartupCheckDialog(QDialog):
 
         # Pre-create all rows in order
         for fn in ENVIRONMENT_CHECKS:
-            # derive name: check_python_version → "Python version"
             name = fn.__name__.replace("check_", "").replace("_", " ").title()
-            # use actual name from the CheckResult for consistency
             self._add_row(name)
 
-        # Blender row (last)
+        # Blender MCP row
         host = get("mcp_host", "localhost")
         port = int(get("mcp_port", 9876))
         self._blender_row = self._add_row(f"Blender MCP ({host}:{port})")
         self._blender_row.set_pending()
 
-        # Add a spacer at the bottom
+        # BlenderLLM row (only when hybrid mode is enabled)
+        ping_blm = bool(get("hybrid_mode", False))
+        if ping_blm:
+            self._blm_row = self._add_row("BlenderLLM server")
+            self._blm_row.set_pending()
+        else:
+            self._blm_row = None
+
         self._rows_layout.addStretch()
 
         self._worker = CheckWorker(
             host=host, port=port,
             ping_blender=bool(host),
+            ping_blm=ping_blm,
         )
         self._worker.check_done.connect(self._on_check_done)
         self._worker.all_done.connect(self._on_all_done)
         self._worker.blender_done.connect(self._on_blender_done)
+        self._worker.blm_done.connect(self._on_blm_done)
         self._worker.start()
 
     # ── Slots ──────────────────────────────────────────────────────────────────
@@ -298,7 +330,7 @@ class StartupCheckDialog(QDialog):
         if not r.ok:
             self._has_failures = True
 
-    def _on_all_done(self, report: StartupReport):
+    def _on_all_done(self, _report: StartupReport):
         self._progress.setRange(0, 14)
         self._progress.setValue(13)
         if self._has_failures:
@@ -317,6 +349,16 @@ class StartupCheckDialog(QDialog):
             self._blender_label.setText(
                 f"Connecting to blender-mcp at "
                 f"{get('mcp_host','localhost')}:{get('mcp_port',9876)}…")
+
+    def _on_blm_done(self, r: CheckResult):
+        if self._blm_row is None:
+            return
+        self._blm_row.set_result(r)
+        if not r.ok:
+            self._blender_label.setText(
+                "BlenderLLM server not reachable — run start_blenderllm.bat to enable local codegen."
+            )
+            self._blender_label.setStyleSheet("color: #ff9800; font-size: 11px;")
 
     def _on_blender_done(self, r: CheckResult):
         self._progress.setValue(14)

@@ -1,14 +1,13 @@
 """
 Connection + AI backend setup dialog.
-
-Manifest-only configuration for BlenderCopilot.
 """
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout,
     QLineEdit, QSpinBox, QDoubleSpinBox, QPushButton, QLabel,
     QGroupBox, QFrame, QFileDialog, QRadioButton, QButtonGroup,
+    QComboBox,
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt
 from config.registry import get, set as reg_set
 
 
@@ -110,7 +109,58 @@ class ConnectionPanel(QDialog):
 
         layout.addWidget(ai_group)
 
-        # ── Pipeline settings ────────────────────────────────────────
+        # ── AI Routing ───────────────────────────────────────────────
+        routing_group = QGroupBox("AI Routing")
+        routing_form  = QFormLayout(routing_group)
+
+        planner_lbl = QLabel("Manifest (fixed)")
+        planner_lbl.setStyleSheet("color:#aaa;")
+        routing_form.addRow("Planner:", planner_lbl)
+
+        self._coder_combo = QComboBox()
+        self._coder_combo.addItem("Manifest (cloud)", "manifest")
+        self._coder_combo.addItem("BlenderLLM (local)", "blenderllm")
+        saved_coder = "blenderllm" if get("hybrid_mode", False) else "manifest"
+        self._coder_combo.setCurrentIndex(0 if saved_coder == "manifest" else 1)
+        self._coder_combo.currentIndexChanged.connect(self._on_coder_changed)
+        routing_form.addRow("Coder:", self._coder_combo)
+
+        # BlenderLLM sub-group (shown only when BlenderLLM selected)
+        self._blenderllm_box = QGroupBox("BlenderLLM Settings")
+        blm_form = QFormLayout(self._blenderllm_box)
+
+        self._blm_url = QLineEdit(get("blenderllm_server_url", "http://127.0.0.1:8080"))
+        self._blm_url.setPlaceholderText("http://127.0.0.1:8080")
+        blm_form.addRow("Server URL:", self._blm_url)
+
+        self._blm_timeout = QSpinBox()
+        self._blm_timeout.setRange(30, 600)
+        self._blm_timeout.setSuffix(" s")
+        self._blm_timeout.setValue(int(get("blenderllm_timeout", 180)))
+        blm_form.addRow("Timeout:", self._blm_timeout)
+
+        blm_home_row = QHBoxLayout()
+        self._blm_home = QLineEdit(get("blenderllm_home", ""))
+        self._blm_home.setPlaceholderText("(optional) path to blenderllm folder")
+        blm_browse_btn = QPushButton("Browse...")
+        blm_browse_btn.setFixedWidth(70)
+        blm_browse_btn.clicked.connect(self._browse_blm_home)
+        blm_home_row.addWidget(self._blm_home)
+        blm_home_row.addWidget(blm_browse_btn)
+        blm_form.addRow("Install dir:", blm_home_row)
+
+        self._blm_test_btn = QPushButton("Test BlenderLLM Connection")
+        self._blm_test_btn.clicked.connect(self._test_blenderllm)
+        blm_form.addRow("", self._blm_test_btn)
+
+        self._blm_status = QLabel("")
+        self._blm_status.setWordWrap(True)
+        blm_form.addRow("", self._blm_status)
+
+        routing_form.addRow("", self._blenderllm_box)
+        self._blenderllm_box.setVisible(saved_coder == "blenderllm")
+
+        layout.addWidget(routing_group)
         ps_group = QGroupBox("Pipeline Settings")
         ps_form  = QFormLayout(ps_group)
 
@@ -277,8 +327,16 @@ class ConnectionPanel(QDialog):
         reg_set("mcp_port",        self.port_input.value())
         reg_set("connection_mode", self._current_mode())
 
-        # Explicitly force Manifest as the AI backend
-        reg_set("ai_backend", "manifest")
+        coder  = self._coder_combo.currentData()
+        hybrid = (coder == "blenderllm")
+        reg_set("ai_backend",  coder)
+        reg_set("hybrid_mode", hybrid)
+        if hybrid:
+            reg_set("blenderllm_server_url", self._blm_url.text().strip())
+            reg_set("blenderllm_timeout",    self._blm_timeout.value())
+            reg_set("blenderllm_home",       self._blm_home.text().strip())
+        else:
+            reg_set("blenderllm_server_url", "")
 
         reg_set("manifest_host",  self.manifest_host.text().strip())
         token = self.manifest_token.text().strip()
@@ -298,6 +356,47 @@ class ConnectionPanel(QDialog):
         if self.on_connect:
             self.on_connect(self.host_input.text().strip(), self.port_input.value())
         self.accept()
+
+    def _on_coder_changed(self, idx: int):
+        self._blenderllm_box.setVisible(
+            self._coder_combo.itemData(idx) == "blenderllm"
+        )
+
+    def _browse_blm_home(self):
+        d = QFileDialog.getExistingDirectory(
+            self, "Select BlenderLLM install directory", self._blm_home.text() or "")
+        if d:
+            self._blm_home.setText(d)
+
+    def _test_blenderllm(self):
+        url = self._blm_url.text().strip() or "http://127.0.0.1:8080"
+        self._blm_test_btn.setEnabled(False)
+        self._blm_status.setText("Testing BlenderLLM...")
+        self._blm_status.setStyleSheet("color:#ff9800;")
+
+        from utils.async_runner import run_in_thread
+
+        def _check():
+            from ai.blenderllm_client import BlenderLLMClient
+            return BlenderLLMClient(url, timeout=10).health()
+
+        run_in_thread(
+            _check,
+            on_result=lambda ok: self._on_blm_test(ok),
+            on_error=lambda e: self._on_blm_test(False, str(e)),
+        )
+
+    def _on_blm_test(self, ok: bool, err: str = ""):
+        self._blm_test_btn.setEnabled(True)
+        if ok:
+            self._blm_status.setText("BlenderLLM server OK")
+            self._blm_status.setStyleSheet("color:#4caf50; font-weight:bold;")
+        else:
+            self._blm_status.setText(
+                f"Not reachable: {err or 'no response'}\n"
+                "Run start_blenderllm.bat first."
+            )
+            self._blm_status.setStyleSheet("color:#f44336;")
 
     def _current_mode(self) -> str:
         for key, rb in self._mode_radios.items():

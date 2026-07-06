@@ -28,6 +28,7 @@ class AppConfig:
     hybrid_mode:           bool  = False
     blenderllm_server_url: str   = ""
     blenderllm_timeout:    int   = 180
+    blenderllm_home:       str   = ""
 
     # Pipeline behaviour
     max_retries:       int   = 5

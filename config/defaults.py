@@ -24,5 +24,6 @@ DEFAULTS = {
     "hybrid_mode":           False,
     "blenderllm_server_url": "",
     "blenderllm_timeout":    180,
+    "blenderllm_home":       "",
     "capture_wireframe":     True,
 }
