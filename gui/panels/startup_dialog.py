@@ -293,7 +293,7 @@ class StartupCheckDialog(QDialog):
 
         # Blender MCP row
         host = get("mcp_host", "localhost")
-        port = int(get("mcp_port", 9876))
+        port = int(get("mcp_port", 8000))
         self._blender_row = self._add_row(f"Blender MCP ({host}:{port})")
         self._blender_row.set_pending()
 
@@ -348,7 +348,7 @@ class StartupCheckDialog(QDialog):
             self._blender_row.set_running()
             self._blender_label.setText(
                 f"Connecting to blender-mcp at "
-                f"{get('mcp_host','localhost')}:{get('mcp_port',9876)}…")
+                f"{get('mcp_host','localhost')}:{get('mcp_port',8000)}…")
 
     def _on_blm_done(self, r: CheckResult):
         if self._blm_row is None:

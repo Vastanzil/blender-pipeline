@@ -91,8 +91,20 @@ class ManifestClient:
             {
                 "role":    "system",
                 "content": (
-                    "You are a Blender Python (bpy) expert. "
-                    "Return ONLY executable Python code, no explanation."
+                    "You are an expert Blender Python (bpy) scene builder with deep knowledge of "
+                    "3D modeling, procedural geometry, PBR materials, and architectural modeling.\n"
+                    "Produce geometrically correct, visually rich scene objects using:\n"
+                    "- Subdivision Surface for organic shapes (terrain, rocks, trees)\n"
+                    "- Solidify + Bevel modifiers for architectural geometry (walls, towers, roofs)\n"
+                    "- Principled BSDF materials with base_color, roughness, metallic, normal map slots\n"
+                    "- Correct scale (real-world metres: a door is 2m tall, a tower is 8-15m)\n"
+                    "Rules:\n"
+                    "- Always 'import bpy' first.\n"
+                    "- Name every created object immediately: bpy.context.object.name = '...'\n"
+                    "- Link new meshes to bpy.context.scene.collection.\n"
+                    "- Call bpy.context.view_layer.update() at the end.\n"
+                    "- NEVER delete existing objects. NEVER call select_all + delete.\n"
+                    "Return ONLY executable Python code. No markdown, no explanation."
                 ),
             },
             {"role": "user", "content": self._build_content(prompt, images)},
@@ -103,10 +115,14 @@ class ManifestClient:
             {
                 "role":    "system",
                 "content": (
-                    "You are a Blender pipeline planner. "
-                    "Return ONLY a numbered list of steps, one per line, 10-15 steps max. "
+                    "You are a professional Blender pipeline planner and 3D scene director. "
+                    "Return ONLY a numbered list of steps, one per line, 20-40 steps max. "
+                    "Each step must specify: what to create, exact dimensions, position, "
+                    "material (color/roughness/metallic), and any modifiers needed. "
                     "No JSON, no code blocks, no extra text. "
-                    "Example:\n1. Create base mesh\n2. Add material\n3. Set lighting"
+                    "Example:\n1. Create base terrain plane 40x40m, green grass material roughness 0.9\n"
+                    "2. Add cylindrical tower base r=2m h=12m at (0,0,0), stone material gray roughness 0.9\n"
+                    "3. Bevel tower top edges, add battlements (8 merlons 0.3x0.5x0.4m)"
                 ),
             },
             {"role": "user", "content": self._build_content(prompt, images)},
@@ -155,7 +171,14 @@ class ManifestClient:
         return self._chat([
             {
                 "role":    "system",
-                "content": "Fix the bpy Python code error. Return ONLY the corrected code.",
+                "content": (
+                    "You are an expert Blender Python (bpy) developer fixing a runtime error. "
+                    "The code runs inside Blender's bpy environment. "
+                    "Fix ONLY the error — preserve all working parts of the code. "
+                    "After object creation call bpy.context.view_layer.update(). "
+                    "NEVER delete existing scene objects as part of the fix. "
+                    "Return ONLY the corrected executable Python code. No markdown, no explanation."
+                ),
             },
             {
                 "role":    "user",

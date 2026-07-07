@@ -234,9 +234,12 @@ class AIChatPanel(QWidget):
         lst = QListWidget()
         lst.setAlternatingRowColors(True)
         for r in runs:
-            ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(r["timestamp"]))
-            name = r["project_name"] or r["run_id"]
-            label = f"{name}   ·   {r['step_count']} steps   ·   {ts}"
+            ts    = time.strftime("%Y-%m-%d %H:%M", time.localtime(r["timestamp"]))
+            name  = r["project_name"] or r["run_id"]
+            total = r.get("step_count", 0)
+            ok    = r.get("ok_count", 0)
+            rate  = f"{ok}/{total} OK" if total else "new"
+            label = f"{name}   ·   {rate}   ·   {ts}"
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, r["run_id"])
             lst.addItem(item)
@@ -343,8 +346,14 @@ class AIChatPanel(QWidget):
 
     def _on_pipeline_done(self, d):
         n = d.get("total_steps", 0)
-        self._status_lbl.setText(f"Done — {n} steps completed.")
-        self._status_lbl.setStyleSheet("color:#4caf50; font-size:11px;")
+        msg = d.get("message", "")
+        confidence = d.get("confidence", 100)
+        if msg:
+            self._status_lbl.setText(msg)
+            self._status_lbl.setStyleSheet("color:#ff9800; font-size:11px;")
+        else:
+            self._status_lbl.setText(f"Done — {n} steps completed. Confidence: {confidence}/100")
+            self._status_lbl.setStyleSheet("color:#4caf50; font-size:11px;")
         self._progress.setVisible(False)
         self._image_bar.clear()
         self._reset_buttons()

@@ -57,15 +57,57 @@ class SpatialNode:
 
 
 # ---------------------------------------------------------------------------
+# Scale presets — (min_separation_m, spacing_multiplier)
+# ---------------------------------------------------------------------------
+
+_SCALE_PRESETS: dict[str, tuple[float, float]] = {
+    "furniture":     (0.5,  1.5),   # chairs, tables, shelves — tight interior spacing
+    "architectural": (3.0,  4.0),   # castles, towers, bridges — wide structural gaps
+    "landscape":     (5.0,  6.0),   # islands, forests, mountains — very wide gaps
+    "diorama":       (0.15, 1.2),   # small isometric tabletop scenes
+    "default":       (0.75, 2.0),
+}
+
+# Keywords that map a scene to a scale preset (checked against style_block/prompt)
+_SCALE_KEYWORDS: dict[str, list[str]] = {
+    "furniture":     ["chair", "table", "shelf", "furniture", "vintage", "sofa",
+                      "desk", "cabinet", "wardrobe", "bed", "lamp", "couch"],
+    "architectural": ["medieval", "castle", "tower", "fortress", "dungeon",
+                      "bridge", "wall", "gate", "keep", "citadel", "building"],
+    "landscape":     ["island", "ocean", "forest", "nature", "landscape",
+                      "mountain", "terrain", "wilderness", "beach", "jungle"],
+    "diorama":       ["diorama", "isometric", "miniature", "tabletop", "voxel",
+                      "low poly scene", "low-poly scene"],
+}
+
+
+def detect_scene_scale(text: str) -> str:
+    """Return the best-matching scale preset name from a combined prompt/style text."""
+    lower = text.lower()
+    for preset, keywords in _SCALE_KEYWORDS.items():
+        if any(kw in lower for kw in keywords):
+            return preset
+    return "default"
+
+
+# ---------------------------------------------------------------------------
 # Core reasoner
 # ---------------------------------------------------------------------------
 
 class SpatialReasoner:
-    MIN_SEPARATION_M: float = 0.75
-    EXCLUSION_EXTRA: float  = 2.0   # multiplier on MIN_SEPARATION for excluded pairs
+    EXCLUSION_EXTRA: float = 2.0   # multiplier on min_sep for excluded pairs
+    MIN_SEPARATION_M: float = 0.75  # class-level default for tests
 
-    def build_layout(self, detections: list[DetectedObject]) -> list[SpatialNode]:
+    def build_layout(
+        self,
+        detections: list[DetectedObject],
+        scene_scale: str = "default",
+    ) -> list[SpatialNode]:
         """Return a list of SpatialNode objects with non-overlapping world positions."""
+        min_sep, _spacing_mult = _SCALE_PRESETS.get(scene_scale, _SCALE_PRESETS["default"])
+        self._min_sep   = min_sep
+        self._scene_scale = scene_scale
+
         nodes: list[SpatialNode] = []
         placed: list[SpatialNode] = []
 
@@ -80,7 +122,7 @@ class SpatialReasoner:
                             base_pos[1] + offset[1],
                             base_pos[2])
             else:
-                raw_pos = self._grid_pos(rank, det.estimated_scale)
+                raw_pos = self._grid_pos(rank, det.estimated_scale, scene_scale)
 
             final_pos = self._resolve_collision(
                 raw_pos, placed, det.label, [d.label for d in detections]
@@ -116,10 +158,15 @@ class SpatialReasoner:
                 return node
         return None
 
-    def _grid_pos(self, rank: int, scale: float) -> tuple[float, float, float]:
-        """Simple spiral-like placement for independent objects."""
-        spacing = max(scale * 2.0, self.MIN_SEPARATION_M * 2)
-        cols    = max(1, int(math.ceil(math.sqrt(rank + 1))))
+    def _grid_pos(self, rank: int, scale: float,
+                  scene_scale: str = "default") -> tuple[float, float, float]:
+        """Spiral-like grid placement using scale-preset spacing."""
+        min_sep, mult = _SCALE_PRESETS.get(scene_scale, _SCALE_PRESETS["default"])
+        spacing = max(scale * mult, min_sep * 2)
+        # Rank 0 → offset slightly from origin so nothing lands exactly at (0,0,0)
+        if rank == 0:
+            return (round(spacing * 0.5, 2), 0.0, 0.0)
+        cols = max(1, int(math.ceil(math.sqrt(rank + 1))))
         x = (rank % cols) * spacing - cols * spacing / 2
         y = (rank // cols) * spacing
         return (round(x, 2), round(y, 2), 0.0)
@@ -155,9 +202,10 @@ class SpatialReasoner:
         return None
 
     def _required_separation(self, a: str, b: str) -> float:
+        min_sep = getattr(self, "_min_sep", 0.75)
         if frozenset({a, b}) in EXCLUSION_PAIRS:
-            return self.MIN_SEPARATION_M * self.EXCLUSION_EXTRA
-        return self.MIN_SEPARATION_M
+            return min_sep * self.EXCLUSION_EXTRA
+        return min_sep
 
     # ------------------------------------------------------------------
     # Prompt helper

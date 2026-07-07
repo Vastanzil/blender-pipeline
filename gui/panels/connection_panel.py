@@ -87,11 +87,17 @@ class ConnectionPanel(QDialog):
         addr_group = QGroupBox("Server Address")
         addr_form  = QFormLayout(addr_group)
         self.host_input = QLineEdit(get("mcp_host", "localhost"))
+        self.host_input.setPlaceholderText("localhost")
+        self.host_input.setToolTip("Hostname where mcpo or blender-mcp is running")
         self.port_input = QSpinBox()
         self.port_input.setRange(1, 65535)
         self.port_input.setValue(int(get("mcp_port", 8000)))
+        self.port_input.setToolTip("mcpo default: 8000  |  blender-mcp direct: 9876")
         addr_form.addRow("Host:", self.host_input)
         addr_form.addRow("Port:", self.port_input)
+        port_hint = QLabel("mcpo: 8000  ·  blender-mcp direct: 9876")
+        port_hint.setStyleSheet("color: #555; font-size: 10px;")
+        addr_form.addRow("", port_hint)
         layout.addWidget(addr_group)
 
         # ── Manifest AI backend ──────────────────────────────────────
@@ -99,6 +105,8 @@ class ConnectionPanel(QDialog):
         ai_form = QFormLayout(ai_group)
 
         self.manifest_host  = QLineEdit(get("manifest_host",  "http://localhost:2099"))
+        self.manifest_host.setPlaceholderText("http://localhost:2099")
+        self.manifest_host.setToolTip("Manifest AI gateway — default port 2099")
         self.manifest_token = QLineEdit(get("manifest_token", ""))
         self.manifest_token.setEchoMode(QLineEdit.EchoMode.Password)
         self.manifest_token.setPlaceholderText("mnfst_xxx...")
@@ -145,6 +153,7 @@ class ConnectionPanel(QDialog):
 
         self._blm_url = QLineEdit(get("blenderllm_server_url", "http://127.0.0.1:8080"))
         self._blm_url.setPlaceholderText("http://127.0.0.1:8080")
+        self._blm_url.setToolTip("llama-server endpoint — default port 8080")
         blm_form.addRow("Server URL:", self._blm_url)
 
         self._blm_timeout = QSpinBox()

@@ -22,8 +22,9 @@ DEFAULTS = {
     "ref_loop_max_iter":   3,
     "ref_loop_threshold":  75,
     "hybrid_mode":           False,
-    "blenderllm_server_url": "",
+    "blenderllm_server_url": "http://127.0.0.1:8080",
     "blenderllm_timeout":    180,
     "blenderllm_home":       "",
     "capture_wireframe":     True,
+    "local_layout_llm_url":        "",  # <-- new key for blueprint planning LLM
 }

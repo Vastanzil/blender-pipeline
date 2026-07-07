@@ -25,6 +25,28 @@ class RetryLoop:
                 skill_hint: str | None = None,
                 visual_context: str = "") -> ExecutionResult:
         current_code = code
+
+        # Syntax pre-validation before sending to Blender
+        try:
+            compile(current_code, "<generated>", "exec")
+        except SyntaxError as e:
+            if self._max_retries > 0:
+                try:
+                    fixed = self._ai.fix_error(
+                        current_code,
+                        f"SyntaxError at line {e.lineno}: {e.msg}",
+                        context,
+                    )
+                    import re as _re
+                    if "```" in fixed:
+                        _m = _re.search(r'```(?:python)?\n?(.*?)```', fixed, _re.DOTALL)
+                        if _m:
+                            fixed = _m.group(1).strip()
+                    if fixed:
+                        current_code = fixed
+                except Exception:
+                    pass
+
         blenderllm_failures = 0
         for attempt in range(1, self._max_retries + 1):
             result = self._client.exec_code(current_code)

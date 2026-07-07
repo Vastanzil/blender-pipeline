@@ -22,7 +22,8 @@ class _State:
         self.project_name: str          = ""
         self.completed: dict[str, Any]  = {}   # stage.value → output
         self.stage_order: list[str]     = [s.value for s in Stage]
-        self.steps: list[dict]          = []   # legacy step records
+        self.steps: list[dict]          = []   # executed step records
+        self.plan: list[str]            = []   # full AI-generated plan (all steps)
 
     def to_dict(self) -> dict:
         return {
@@ -30,6 +31,7 @@ class _State:
             "completed":    self.completed,
             "stage_order":  self.stage_order,
             "steps":        self.steps,
+            "plan":         self.plan,
         }
 
     @classmethod
@@ -39,6 +41,7 @@ class _State:
         s.completed    = d.get("completed", {})
         s.stage_order  = d.get("stage_order", [st.value for st in Stage])
         s.steps        = d.get("steps", [])
+        s.plan         = d.get("plan", [])
         return s
 
 
@@ -87,6 +90,14 @@ class Checkpoint:
         ctx.setdefault("project_name", self.state.project_name)
         ctx.setdefault("completed_stages", list(self.state.completed.keys()))
         return ctx
+
+    # ------------------------------------------------------------------
+    # Plan persistence — called once before step execution begins
+
+    def save_plan(self, plan: list[str]):
+        """Persist the full AI-generated plan so resume() can recover all steps."""
+        self.state.plan = list(plan)
+        self._flush()
 
     # ------------------------------------------------------------------
     # Legacy save() — still works for orchestrator step history
@@ -141,12 +152,19 @@ class Checkpoint:
         for f in sorted(ck_dir.glob("*.json"),
                         key=lambda p: p.stat().st_mtime, reverse=True):
             try:
-                data = json.loads(f.read_text(encoding="utf-8"))
+                data  = json.loads(f.read_text(encoding="utf-8"))
+                steps = data.get("steps", [])
+                plan  = data.get("plan", [])
+                ok    = sum(1 for s in steps if s.get("success"))
+                total = max(len(steps), len(plan))
                 results.append({
                     "run_id":       data.get("run_id", f.stem),
                     "project_name": data.get("project_name", ""),
                     "timestamp":    data.get("timestamp", 0),
-                    "step_count":   len(data.get("steps", [])),
+                    "step_count":   total,
+                    "ok_count":     ok,
+                    "fail_count":   len(steps) - ok,
+                    "plan_count":   len(plan),
                     "path":         str(f),
                 })
             except Exception:
